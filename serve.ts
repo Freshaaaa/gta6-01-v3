@@ -2,8 +2,9 @@
 // locally without a build step: `node serve.ts` serves game/ on http://localhost:8080.
 // It sends the MIME types a browser game needs, answers HEAD requests (headers only, so
 // a checker can probe a file without downloading it), refuses any path outside game/,
-// and logs the requests it cannot serve, and otherwise does nothing clever: this is a
-// development convenience, not a web server for the internet.
+// refuses methods other than GET/HEAD with 405, and logs the requests it cannot serve,
+// and otherwise does nothing clever: this is a development convenience, not a web server
+// for the internet.
 import { createReadStream, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join, normalize, resolve, sep } from 'node:path';
@@ -49,6 +50,13 @@ createServer((request, response) => {
     return;
   }
   if (pathname.endsWith('/')) pathname += 'index.html';
+  // Only reads are served: anything else (POST/PUT/DELETE/…) is not a way
+  // to fetch a game file, so refuse it instead of serving the file anyway.
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    response.writeHead(405, { allow: 'GET, HEAD' }).end('method not allowed');
+    console.error(`${request.method} ${pathname} -> 405 method not allowed`);
+    return;
+  }
   const file = resolve(join(root, normalize(pathname)));
   if (file !== root && !file.startsWith(root + sep)) {
     response.writeHead(403).end('forbidden');

@@ -435,6 +435,12 @@ function step(dt) {
   }
   state.lightning = Math.max(0, state.lightning - dt * 2.5);
 
+  // Radio + mute work even while a mission briefing is open (the world
+  // is paused, but the player can still switch stations while reading).
+  if (input.radioNext) nextStation();
+  if (input.radioPrev) prevStation();
+  if (input.mutePressed) toggleMute();
+
   // Dialogue advances (world paused while open).
   if (state.dialogue.length > 0) {
     if (input.confirmPressed || input.interactPressed) {
@@ -467,9 +473,6 @@ function step(dt) {
   if (input.garagePressed) {
     state.garageOpen = true;
   }
-  if (input.radioNext) nextStation();
-  if (input.radioPrev) prevStation();
-  if (input.mutePressed) toggleMute();
   if (input.taxiPressed) handleJobKey(state);
   if (input.weaponKey > 0) {
     const key = ['pistol', 'smg', 'shotgun', 'rifle'][input.weaponKey - 1];

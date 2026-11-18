@@ -1,15 +1,19 @@
 // Solmar Bay: Heatwave — all sound is synthesized with the Web Audio API:
-// no audio files, no network. Three radio stations share one 16-step
+// no audio files, no network. Five radio stations share one 16-step
 // scheduler (eighth-note steps; each station brings its own bassline, hat
 // and kick patterns), and one-shot effects cover gunshots, punches,
 // pickups, sirens, the engine hum, the police helicopter rotor and
-// explosions. Audio starts on the first user gesture (browser policy);
-// main.js calls nextStation() on R and reads stationName() for the HUD.
+// explosions. Audio starts on the first user gesture (browser policy).
+//
+// NOTE (v3): this is the original v2 audio module. The 3D game plays its
+// audio through audio.js, which mirrors these same five station
+// definitions (patterns, names, DJs, tracks in config.js) — keep the two
+// in sync when a station changes.
 
 import { RADIO_STATIONS } from './config.js';
 
 // 16-step patterns (0 = rest). Bass values are frequencies in Hz; hat/kick
-// values are 0/1 triggers. All three stations are A-minor flavoured so the
+// values are 0/1 triggers. All five stations are A-minor flavoured so the
 // station switch never clashes with the engine or siren layers.
 const STATIONS = [
   {
@@ -43,6 +47,14 @@ const STATIONS = [
     hat: [0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1],
     kick: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0],
     wave: 'square',
+  },
+  {
+    // Vice Classics — 100 bpm, old-school funk: syncopated bass + off-beat hats.
+    bpm: 100,
+    bass: [55, 0, 65.41, 0, 0, 55, 0, 49, 0, 0, 82.41, 0, 65.41, 0, 55, 0],
+    hat: [0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 0, 0, 1, 0, 1],
+    kick: [1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1],
+    wave: 'triangle',
   },
 ];
 

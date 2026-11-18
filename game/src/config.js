@@ -133,12 +133,14 @@ export const RADIO_STATIONS = [
   { name: 'Night Drive',    dj: 'DJ Luna',   bpm: 112, genre: 'synthwave' },
   { name: 'Latin Heat',     dj: 'La Gata',   bpm: 124, genre: 'reggaeton' },
   { name: 'Bay FM',         dj: 'Big Ray',   bpm: 140, genre: 'talk + hits' },
+  { name: 'Vice Classics',  dj: 'DJ Rico',   bpm: 100, genre: 'old-school funk' },
 ];
 export const RADIO_TRACKS = [
   ['Sunset Over Solmar', 'Palm Trees at Midnight', 'Neon Tide'],
   ['Chrome Hearts', 'Midnight Overpass', 'Vice Lights'],
   ['Fuego en la Bahia', 'Salsa del Sol', 'Baila Conmigo'],
   ['The Bay Today', 'Traffic & Tides', 'Solmar Nights'],
+  ['Cruisin\u2019 the Strip', 'Gold Chain Boogie', 'Lowrider Sunset'],
 ];
 
 // In-game phone / social feed (parody posts, invented characters).

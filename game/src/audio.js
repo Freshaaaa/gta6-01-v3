@@ -1,5 +1,5 @@
 // Solmar Bay 3D — all sound is synthesized with the Web Audio API: no
-// audio files, no network. Four radio stations share one 16-step
+// audio files, no network. Five radio stations share one 16-step
 // scheduler (eighth-note steps; each station brings its own bassline, hat
 // and kick patterns), and one-shot effects cover gunshots, punches,
 // pickups, sirens, the engine hum, the police helicopter rotor and
@@ -31,6 +31,8 @@ const PATTERNS = [
   { bass: [0, 3, 0, 7, 0, 0, 5, 0, 0, 3, 0, 7, 10, 0, 7, 5], root: 58.27, kick: [1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 0], hat: [0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 1, 1], wave: 'triangle' },
   // Bay FM — talk + hits: bright bass, busy hats, a little lead line.
   { bass: [0, 0, 5, 7, 0, 5, 0, 3, 0, 0, 5, 7, 10, 7, 5, 3], root: 65.41, kick: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0], hat: [1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 0, 1, 0], wave: 'square' },
+  // Vice Classics — old-school funk: laid-back bass, syncopated kick.
+  { bass: [0, 0, 7, 0, 0, 5, 0, 7, 0, 0, 10, 0, 7, 0, 5, 3], root: 55, kick: [1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1], hat: [0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 0, 0, 1, 0, 1], wave: 'triangle' },
 ];
 
 function ensureCtx() {
