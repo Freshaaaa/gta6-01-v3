@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Solmar Bay: Heatwave — an original open-world crime game. 10 story missions, money-van heists, rain and storms, 4 weapons, police helicopters, taxi fares and street races in a sun-soaked coastal city.">
+<title>Solmar Bay: Heatwave — An Open-World Crime Story</title>
+<link rel="icon" href="data:,">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0e1a; }
+  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  /* Read aloud, never shown: the status line screen readers announce. */
+  #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+</style>
+</head>
+<body>
+<canvas id="game" aria-label="Solmar Bay: Heatwave — an open-world crime game. Walk and drive around the city, steal cars, crack money vans, take missions, outrun the police and their helicopter, in sun, rain and storms."></canvas>
+<p id="status" role="status" aria-live="polite"></p>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
