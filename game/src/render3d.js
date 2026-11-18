@@ -17,10 +17,9 @@ for (let i = 0; i < ROAD_COUNT; i++) roadLines.push(ROAD_FIRST + i * ROAD_GAP);
 
 // ---- small geometry helpers (our own merge; no BufferGeometryUtils) ----
 
-function boxPart(list, w, h, d, x, y, z, color, ry = 0) {
-  const g = new THREE.BoxGeometry(w, h, d);
-  if (ry) g.rotateY(ry);
-  g.translate(x, y, z);
+// Paint every vertex of a geometry one flat colour (vertex-colour
+// material reads this). Returns the geometry for chaining.
+function colorize(g, color) {
   const c = new THREE.Color(color);
   const n = g.attributes.position.count;
   const colors = new Float32Array(n * 3);
@@ -30,8 +29,72 @@ function boxPart(list, w, h, d, x, y, z, color, ry = 0) {
     colors[i * 3 + 2] = c.b;
   }
   g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-  list.push(g);
   return g;
+}
+
+function boxPart(list, w, h, d, x, y, z, color, ry = 0) {
+  const g = new THREE.BoxGeometry(w, h, d);
+  if (ry) g.rotateY(ry);
+  g.translate(x, y, z);
+  list.push(colorize(g, color));
+  return g;
+}
+
+function cylPart(list, rTop, rBottom, h, radial, x, y, z, color, ry = 0, rx = 0) {
+  const g = new THREE.CylinderGeometry(rTop, rBottom, h, radial);
+  if (rx) g.rotateX(rx);
+  if (ry) g.rotateY(ry);
+  g.translate(x, y, z);
+  list.push(colorize(g, color));
+  return g;
+}
+
+function spherePart(list, r, x, y, z, color, sx = 1, sy = 1, sz = 1, wSeg = 12, hSeg = 9) {
+  const g = new THREE.SphereGeometry(r, wSeg, hSeg);
+  if (sx !== 1 || sy !== 1 || sz !== 1) {
+    g.scale(sx, sy, sz);
+    g.computeVertexNormals(); // re-normalise after a non-uniform scale
+  }
+  g.translate(x, y, z);
+  list.push(colorize(g, color));
+  return g;
+}
+
+function capsulePart(list, r, len, x, y, z, color, sx = 1, sz = 1) {
+  const g = new THREE.CapsuleGeometry(r, len, 4, 10);
+  if (sx !== 1 || sz !== 1) {
+    g.scale(sx, 1, sz);
+    g.computeVertexNormals(); // re-normalise after a non-uniform scale
+  }
+  g.translate(x, y, z);
+  list.push(colorize(g, color));
+  return g;
+}
+
+function conePart(list, r, h, radial, x, y, z, color, ry = 0) {
+  const g = new THREE.ConeGeometry(r, h, radial);
+  if (ry) g.rotateY(ry);
+  g.translate(x, y, z);
+  list.push(colorize(g, color));
+  return g;
+}
+
+// Extrude a 2D side profile (u = along length, front = +u; v = height)
+// into a rounded body. The extrusion runs across the width; after the
+// -90 deg Y rotation, shape-X maps to world +Z (forward) and the depth
+// maps to world X, centred. The bevel rounds the long edges so the part
+// reads as a formed body instead of a box.
+function extrudeProfile(points, depth, bevelThickness, bevelSize, color) {
+  const s = new THREE.Shape();
+  s.moveTo(points[0][0], points[0][1]);
+  for (let i = 1; i < points.length; i++) s.lineTo(points[i][0], points[i][1]);
+  s.closePath();
+  const g = new THREE.ExtrudeGeometry(s, {
+    depth, bevelEnabled: true, bevelThickness, bevelSize, bevelSegments: 2, steps: 1,
+  });
+  g.translate(0, 0, -depth / 2);
+  g.rotateY(-Math.PI / 2);
+  return colorize(g, color);
 }
 
 function mergeGeometries(list) {
@@ -39,7 +102,8 @@ function mergeGeometries(list) {
   let iCount = 0;
   for (const g of list) {
     vCount += g.attributes.position.count;
-    iCount += g.index.count;
+    // ExtrudeGeometry is non-indexed; every other part is indexed.
+    iCount += g.index ? g.index.count : g.attributes.position.count;
   }
   const pos = new Float32Array(vCount * 3);
   const nor = new Float32Array(vCount * 3);
@@ -51,10 +115,16 @@ function mergeGeometries(list) {
     pos.set(g.attributes.position.array, vo * 3);
     nor.set(g.attributes.normal.array, vo * 3);
     col.set(g.attributes.color.array, vo * 3);
-    const gi = g.index.array;
-    for (let i = 0; i < gi.length; i++) idx[io + i] = gi[i] + vo;
-    vo += g.attributes.position.count;
-    io += gi.length;
+    const n = g.attributes.position.count;
+    if (g.index) {
+      const gi = g.index.array;
+      for (let i = 0; i < gi.length; i++) idx[io + i] = gi[i] + vo;
+      io += gi.length;
+    } else {
+      for (let i = 0; i < n; i++) idx[io + i] = vo + i;
+      io += n;
+    }
+    vo += n;
   }
   const out = new THREE.BufferGeometry();
   out.setAttribute('position', new THREE.BufferAttribute(pos, 3));
@@ -155,26 +225,42 @@ function buildCarGeometry(model) {
   const parts = [];
   const len = model.len;
   const wid = model.wid;
+  const hl = len / 2;
   const body = model.color;
   const glass = '#16202a';
   const dark = '#1c1f24';
-  boxPart(parts, wid, 0.55, len, 0, 0.48, 0, body);
-  boxPart(parts, wid * 0.82, 0.42, len * 0.48, 0, 0.95, -len * 0.06, glass);
+  const hauler = model.name === 'Hauler';
+  // Lower body: a rounded slab with a sloped nose (the Hauler's rear is
+  // its flat bed; the cab sits ahead of it). Bevelled edges, no flat slab.
+  parts.push(extrudeProfile([
+    [-hl, 0.28], [-hl, 0.78], [hl * 0.92, 0.78], [hl, 0.58], [hl, 0.28],
+  ], wid - 0.1, 0.05, 0.04, body));
+  // Glasshouse: a narrower, sloped cabin in dark glass on top of the body.
+  // (Hauler cab sits forward, over the front half.)
+  const cabRear = hauler ? -hl * 0.30 : -hl * 0.48;
+  const cabFront = hl * 0.40;
+  const cabSpan = cabFront - cabRear;
+  parts.push(extrudeProfile([
+    [cabRear, 0.72], [cabRear, 0.88],
+    [cabRear + cabSpan * 0.25, 1.04], [cabFront - cabSpan * 0.25, 1.04],
+    [cabFront, 0.88], [cabFront, 0.72],
+  ], wid * 0.84 - 0.06, 0.03, 0.03, glass));
   boxPart(parts, wid * 0.9, 0.12, 0.5, 0, 0.42, len / 2 - 0.1, dark); // front bumper
   boxPart(parts, wid * 0.9, 0.12, 0.5, 0, 0.42, -len / 2 + 0.1, dark); // rear bumper
-  boxPart(parts, 0.5, 0.14, 0.08, -wid * 0.28, 0.55, len / 2 + 0.02, '#fff8d0'); // headlights
-  boxPart(parts, 0.5, 0.14, 0.08, wid * 0.28, 0.55, len / 2 + 0.02, '#fff8d0');
-  boxPart(parts, 0.5, 0.14, 0.08, -wid * 0.28, 0.55, -len / 2 - 0.02, '#ff2222'); // taillights
-  boxPart(parts, 0.5, 0.14, 0.08, wid * 0.28, 0.55, -len / 2 - 0.02, '#ff2222');
+  // Round lamps: flattened ellipsoids, half-embedded in the nose/tail.
+  spherePart(parts, 0.16, -wid * 0.28, 0.55, len / 2 + 0.02, '#fff8d0', 1.4, 0.7, 0.5);
+  spherePart(parts, 0.16, wid * 0.28, 0.55, len / 2 + 0.02, '#fff8d0', 1.4, 0.7, 0.5);
+  spherePart(parts, 0.16, -wid * 0.28, 0.55, -len / 2 - 0.02, '#ff2222', 1.4, 0.7, 0.5);
+  spherePart(parts, 0.16, wid * 0.28, 0.55, -len / 2 - 0.02, '#ff2222', 1.4, 0.7, 0.5);
   if (model.spoiler) {
     boxPart(parts, wid * 0.9, 0.06, 0.4, 0, 1.05, -len / 2 + 0.25, dark);
     boxPart(parts, 0.08, 0.25, 0.08, -wid * 0.35, 0.9, -len / 2 + 0.25, dark);
     boxPart(parts, 0.08, 0.25, 0.08, wid * 0.35, 0.9, -len / 2 + 0.25, dark);
   }
   if (model.taxi) {
-    boxPart(parts, 0.7, 0.22, 0.4, 0, 1.28, 0, '#f5b301');
+    boxPart(parts, 0.7, 0.22, 0.4, 0, 1.18, 0, '#f5b301');
   }
-  if (model.name === 'Hauler') {
+  if (hauler) {
     boxPart(parts, wid * 0.9, 0.5, len * 0.4, 0, 1.0, -len * 0.2, shade(body, 0.8));
   }
   const geo = mergeGeometries(parts);
@@ -183,12 +269,13 @@ function buildCarGeometry(model) {
 
 function buildCharacterGeometry(shirt, pants, skin) {
   const parts = [];
-  boxPart(parts, 0.55, 0.7, 0.3, 0, 1.08, 0, shirt); // torso
-  boxPart(parts, 0.34, 0.34, 0.32, 0, 1.62, 0, skin); // head
-  boxPart(parts, 0.2, 0.55, 0.22, -0.14, 0.45, 0, pants); // legs
-  boxPart(parts, 0.2, 0.55, 0.22, 0.14, 0.45, 0, pants);
-  boxPart(parts, 0.14, 0.55, 0.16, -0.36, 1.05, 0, shirt); // arms
-  boxPart(parts, 0.14, 0.55, 0.16, 0.36, 1.05, 0, shirt);
+  // Rounded torso (flattened capsule), round head, capsule limbs.
+  capsulePart(parts, 0.27, 0.22, 0, 1.08, 0, shirt, 1, 0.6); // torso
+  spherePart(parts, 0.17, 0, 1.62, 0, skin); // head
+  capsulePart(parts, 0.10, 0.35, -0.14, 0.45, 0, pants); // legs
+  capsulePart(parts, 0.10, 0.35, 0.14, 0.45, 0, pants);
+  capsulePart(parts, 0.07, 0.35, -0.36, 1.05, 0, shirt); // arms
+  capsulePart(parts, 0.07, 0.35, 0.36, 1.05, 0, shirt);
   return mergeGeometries(parts);
 }
 
@@ -196,14 +283,14 @@ function buildCharacterGeometry(shirt, pants, skin) {
  * two separate leg meshes that swing from the hip while walking. */
 export function buildPlayerCharacter(shirt, pants, skin) {
   const torsoParts = [];
-  boxPart(torsoParts, 0.55, 0.7, 0.3, 0, 1.08, 0, shirt);
-  boxPart(torsoParts, 0.34, 0.34, 0.32, 0, 1.62, 0, skin);
-  boxPart(torsoParts, 0.14, 0.55, 0.16, -0.36, 1.05, 0, shirt);
-  boxPart(torsoParts, 0.14, 0.55, 0.16, 0.36, 1.05, 0, shirt);
+  capsulePart(torsoParts, 0.27, 0.22, 0, 1.08, 0, shirt, 1, 0.6);
+  spherePart(torsoParts, 0.17, 0, 1.62, 0, skin);
+  capsulePart(torsoParts, 0.07, 0.35, -0.36, 1.05, 0, shirt);
+  capsulePart(torsoParts, 0.07, 0.35, 0.36, 1.05, 0, shirt);
   const torso = new THREE.Mesh(mergeGeometries(torsoParts), new THREE.MeshLambertMaterial({ vertexColors: true }));
   torso.castShadow = true;
   const legParts = [];
-  boxPart(legParts, 0.2, 0.55, 0.22, 0, -0.27, 0, pants);
+  capsulePart(legParts, 0.10, 0.35, 0, -0.27, 0, pants);
   const legGeo = mergeGeometries(legParts);
   const legMat = new THREE.MeshLambertMaterial({ vertexColors: true });
   const legL = new THREE.Mesh(legGeo, legMat);
@@ -217,6 +304,38 @@ export function buildPlayerCharacter(shirt, pants, skin) {
   group.add(legL);
   group.add(legR);
   return { group, torso, legL, legR };
+}
+
+// ---- building silhouettes ----
+// The city data only stores a footprint (w, d, h) so physics, the layout
+// and the camera push-out never change; the silhouette is derived from a
+// stable hash of the footprint, so the same seed always draws the same
+// skyline. Landmarks keep their plain mass.
+function hash01(x, z) {
+  const s = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453;
+  return s - Math.floor(s);
+}
+
+function buildingShape(b) {
+  if (b.landmark) return 'box';
+  const f = hash01(b.x, b.z);
+  if (b.h >= 34) { // tall tower
+    if (f < 0.30) return 'cyl';
+    if (f < 0.65) return 'setback';
+    if (f < 0.80) return 'pyramid';
+    return 'box';
+  }
+  if (b.h >= 16) { // mid-rise
+    if (f < 0.15) return 'cyl';
+    if (f < 0.40) return 'setback';
+    if (f < 0.60) return 'pyramid';
+    return 'box';
+  }
+  // low-rise
+  if (f < 0.10) return 'cyl';
+  if (f < 0.25) return 'setback';
+  if (f < 0.55) return 'pyramid';
+  return 'box';
 }
 
 // ---- the board ----
@@ -305,55 +424,174 @@ export class Board {
     ground.receiveShadow = true;
     this.scene.add(ground);
 
-    // Buildings: one instanced box, per-instance colour.
-    const boxGeo = new THREE.BoxGeometry(1, 1, 1);
-    boxGeo.translate(0, 0.5, 0);
-    const bMat = new THREE.MeshLambertMaterial({ color: '#ffffff' });
-    const bMesh = new THREE.InstancedMesh(boxGeo, bMat, city.buildings.length);
-    bMesh.castShadow = true;
-    bMesh.receiveShadow = true;
+    // Buildings: varied silhouettes, still instanced (one draw call per
+    // shape). The footprint (w, d, h) never changes, so physics, the
+    // camera push-out and line of sight still use the same AABB.
     const m4 = new THREE.Matrix4();
     const q = new THREE.Quaternion();
     const s = new THREE.Vector3();
     const p = new THREE.Vector3();
     const col = new THREE.Color();
-    city.buildings.forEach((b, i) => {
+    const bMat = new THREE.MeshLambertMaterial({ color: '#ffffff' });
+    const crownH = (b) => Math.max(3, b.h * 0.18);
+    const boxBs = [];     // box / setback / pyramid main mass
+    const cylBs = [];     // cylinder towers
+    const crownBs = [];   // setback crowns
+    const pyrBs = [];     // pyramid roofs
+    const parapetBs = []; // roof slabs on plain boxes with roof=true
+    for (const b of city.buildings) {
+      const shape = buildingShape(b);
+      if (shape === 'cyl') cylBs.push(b);
+      else {
+        boxBs.push(b);
+        if (shape === 'setback') crownBs.push(b);
+        else if (shape === 'pyramid') pyrBs.push(b);
+        else if (b.roof) parapetBs.push(b);
+      }
+    }
+    // -- main mass: instanced boxes --
+    const boxGeo = new THREE.BoxGeometry(1, 1, 1);
+    boxGeo.translate(0, 0.5, 0);
+    const bMesh = new THREE.InstancedMesh(boxGeo, bMat, Math.max(1, boxBs.length));
+    bMesh.castShadow = true;
+    bMesh.receiveShadow = true;
+    boxBs.forEach((b, i) => {
+      const h = buildingShape(b) === 'setback' ? b.h - crownH(b) : b.h;
       p.set(b.x, 0, b.z);
-      s.set(b.w, b.h, b.d);
+      s.set(b.w, h, b.d);
       m4.compose(p, q, s);
       bMesh.setMatrixAt(i, m4);
       bMesh.setColorAt(i, col.set(b.color));
     });
+    bMesh.count = boxBs.length;
     bMesh.instanceMatrix.needsUpdate = true;
     if (bMesh.instanceColor) bMesh.instanceColor.needsUpdate = true;
     this.scene.add(bMesh);
+    // -- cylinder towers --
+    const cylGeo = new THREE.CylinderGeometry(0.5, 0.5, 1, 14);
+    cylGeo.translate(0, 0.5, 0);
+    const cylMesh = new THREE.InstancedMesh(cylGeo, bMat, Math.max(1, cylBs.length));
+    cylMesh.castShadow = true;
+    cylMesh.receiveShadow = true;
+    cylBs.forEach((b, i) => {
+      const dia = Math.min(b.w, b.d);
+      p.set(b.x, 0, b.z);
+      s.set(dia, b.h, dia);
+      m4.compose(p, q, s);
+      cylMesh.setMatrixAt(i, m4);
+      cylMesh.setColorAt(i, col.set(b.color));
+    });
+    cylMesh.count = cylBs.length;
+    cylMesh.instanceMatrix.needsUpdate = true;
+    if (cylMesh.instanceColor) cylMesh.instanceColor.needsUpdate = true;
+    this.scene.add(cylMesh);
+    // -- setback crowns: a smaller box on top of tall towers --
+    const crownGeo = new THREE.BoxGeometry(1, 1, 1);
+    crownGeo.translate(0, 0.5, 0);
+    const crownMesh = new THREE.InstancedMesh(crownGeo, bMat, Math.max(1, crownBs.length));
+    crownMesh.castShadow = true;
+    crownBs.forEach((b, i) => {
+      const ch = crownH(b);
+      p.set(b.x, b.h - ch, b.z);
+      s.set(b.w * 0.62, ch, b.d * 0.62);
+      m4.compose(p, q, s);
+      crownMesh.setMatrixAt(i, m4);
+      crownMesh.setColorAt(i, col.set(shade(b.color, 0.85)));
+    });
+    crownMesh.count = crownBs.length;
+    crownMesh.instanceMatrix.needsUpdate = true;
+    if (crownMesh.instanceColor) crownMesh.instanceColor.needsUpdate = true;
+    this.scene.add(crownMesh);
+    // -- pyramid roofs: a 4-sided cone, base covering the footprint --
+    const pyrGeo = new THREE.ConeGeometry(1, 1, 4);
+    pyrGeo.rotateY(Math.PI / 4);
+    pyrGeo.translate(0, 0.5, 0);
+    const pyrMesh = new THREE.InstancedMesh(pyrGeo, bMat, Math.max(1, pyrBs.length));
+    pyrMesh.castShadow = true;
+    pyrBs.forEach((b, i) => {
+      const rh = Math.min(b.w, b.d) * 0.32;
+      p.set(b.x, b.h, b.z);
+      s.set(b.w / Math.SQRT2, rh, b.d / Math.SQRT2);
+      m4.compose(p, q, s);
+      pyrMesh.setMatrixAt(i, m4);
+      pyrMesh.setColorAt(i, col.set(shade(b.color, 0.7)));
+    });
+    pyrMesh.count = pyrBs.length;
+    pyrMesh.instanceMatrix.needsUpdate = true;
+    if (pyrMesh.instanceColor) pyrMesh.instanceColor.needsUpdate = true;
+    this.scene.add(pyrMesh);
+    // -- parapet slabs: a thin cap overhanging the roof edge --
+    const parGeo = new THREE.BoxGeometry(1, 1, 1);
+    parGeo.translate(0, 0.5, 0);
+    const parMesh = new THREE.InstancedMesh(parGeo, bMat, Math.max(1, parapetBs.length));
+    parapetBs.forEach((b, i) => {
+      p.set(b.x, b.h, b.z);
+      s.set(b.w + 0.4, 0.5, b.d + 0.4);
+      m4.compose(p, q, s);
+      parMesh.setMatrixAt(i, m4);
+      parMesh.setColorAt(i, col.set(shade(b.color, 0.75)));
+    });
+    parMesh.count = parapetBs.length;
+    parMesh.instanceMatrix.needsUpdate = true;
+    if (parMesh.instanceColor) parMesh.instanceColor.needsUpdate = true;
+    this.scene.add(parMesh);
 
-    // Window bands: one thin box per floor, slightly wider than the wall,
-    // so it reads from every side. Unlit; colour lerps day -> warm night.
+    // Window bands: one thin band per floor, slightly wider than the wall.
+    // Box towers get box bands; cylinder towers get ring bands (a box
+    // band would stick out of a round tower). Unlit; colour lerps
+    // day -> warm night.
     const floors = [];
+    const cylFloors = [];
     for (const b of city.buildings) {
-      const n = Math.max(1, Math.floor(b.h / 3.2));
+      const shape = buildingShape(b);
+      const top = shape === 'setback' ? b.h - crownH(b) : b.h;
+      const n = Math.max(1, Math.floor(top / 3.2));
+      const target = shape === 'cyl' ? cylFloors : floors;
       for (let f = 0; f < n; f++) {
-        floors.push({ x: b.x, y: 2.2 + f * 3.2, z: b.z, w: b.w + 0.15, d: b.d + 0.15 });
+        target.push({ x: b.x, y: 2.2 + f * 3.2, z: b.z, w: b.w + 0.15, d: b.d + 0.15 });
+      }
+      if (shape === 'setback') {
+        // One band on the crown.
+        floors.push({ x: b.x, y: b.h - crownH(b) / 2 - 0.275, z: b.z, w: b.w * 0.62 + 0.15, d: b.d * 0.62 + 0.15 });
       }
     }
     const winGeo = new THREE.BoxGeometry(1, 1, 1);
     winGeo.translate(0, 0.5, 0);
     this.windowMat = new THREE.MeshBasicMaterial({ color: '#1a2233' });
-    const winMesh = new THREE.InstancedMesh(winGeo, this.windowMat, floors.length);
+    const winMesh = new THREE.InstancedMesh(winGeo, this.windowMat, Math.max(1, floors.length));
     floors.forEach((f, i) => {
       p.set(f.x, f.y, f.z);
-      s.set(f.w, 0.9, f.d);
+      s.set(f.w, 0.55, f.d);
       m4.compose(p, q, s);
       winMesh.setMatrixAt(i, m4);
       winMesh.setColorAt(i, col.setHSL(0.1, 0.7, 0.55 + (i % 3) * 0.08));
     });
+    winMesh.count = floors.length;
     winMesh.instanceMatrix.needsUpdate = true;
     if (winMesh.instanceColor) winMesh.instanceColor.needsUpdate = true;
     this.scene.add(winMesh);
+    // Cylinder window rings.
+    const cylWinGeo = new THREE.CylinderGeometry(0.5, 0.5, 1, 14);
+    cylWinGeo.translate(0, 0.5, 0);
+    const cylWinMesh = new THREE.InstancedMesh(cylWinGeo, this.windowMat, Math.max(1, cylFloors.length));
+    cylFloors.forEach((f, i) => {
+      // f.w/f.d already carry the +0.15 band margin; +0.05 more gives a
+      // ~0.1 m ring overhang around the tower.
+      const dia = Math.min(f.w, f.d) + 0.05;
+      p.set(f.x, f.y, f.z);
+      s.set(dia, 0.55, dia);
+      m4.compose(p, q, s);
+      cylWinMesh.setMatrixAt(i, m4);
+      cylWinMesh.setColorAt(i, col.setHSL(0.1, 0.7, 0.55 + (i % 3) * 0.08));
+    });
+    cylWinMesh.count = cylFloors.length;
+    cylWinMesh.instanceMatrix.needsUpdate = true;
+    if (cylWinMesh.instanceColor) cylWinMesh.instanceColor.needsUpdate = true;
+    this.scene.add(cylWinMesh);
 
-    // Neon signs on the Strip / Downtown / Marina faces.
-    const neons = city.buildings.filter((b) => b.neon);
+    // Neon signs on the Strip / Downtown / Marina faces (box towers only;
+    // a flat sign would float off a round tower).
+    const neons = city.buildings.filter((b) => b.neon && buildingShape(b) !== 'cyl');
     const neonGeo = new THREE.BoxGeometry(1, 1, 1);
     this.neonMat = new THREE.MeshBasicMaterial({ color: '#ffffff' });
     const neonMesh = new THREE.InstancedMesh(neonGeo, this.neonMat, Math.max(1, neons.length));
@@ -374,7 +612,7 @@ export class Board {
     trunkGeo.translate(0, 1.1, 0);
     const trunkMesh = new THREE.InstancedMesh(trunkGeo, new THREE.MeshLambertMaterial({ color: '#6b4a2f' }), city.trees.length);
     trunkMesh.castShadow = true;
-    const canopyGeo = new THREE.IcosahedronGeometry(1.7, 0);
+    const canopyGeo = new THREE.IcosahedronGeometry(1.7, 1);
     canopyGeo.translate(0, 3.2, 0);
     const canopyMesh = new THREE.InstancedMesh(canopyGeo, new THREE.MeshLambertMaterial({ color: '#ffffff' }), city.trees.length);
     canopyMesh.castShadow = true;
@@ -523,9 +761,10 @@ export class Board {
     // Helicopter.
     const heli = new THREE.Group();
     const hParts = [];
-    boxPart(hParts, 2.4, 1.6, 4.2, 0, 0, 0, '#1c2733');
-    boxPart(hParts, 1.2, 0.8, 3.2, 0, -0.2, -3.4, '#1c2733');
-    boxPart(hParts, 2.0, 0.7, 1.6, 0, 0.9, 0.6, '#0e1420');
+    // Rounded fuselage (ellipsoid), tapering tail boom, canopy dome.
+    spherePart(hParts, 1, 0, 0, 0, '#1c2733', 1.2, 0.8, 2.1);
+    cylPart(hParts, 0.5, 0.32, 3.2, 8, 0, -0.2, -3.4, '#1c2733', 0, Math.PI / 2);
+    spherePart(hParts, 1, 0, 0.9, 0.6, '#0e1420', 1.0, 0.35, 0.8);
     const hBody = new THREE.Mesh(mergeGeometries(hParts), this.lambert);
     hBody.castShadow = true;
     heli.add(hBody);
