@@ -7,7 +7,7 @@
 // rotating heading-up minimap. No game logic lives here — it only reads
 // state and paints it.
 
-import * as THREE from '../vendor/three.module.js';
+import * as THREE from 'three';
 import { WORLD_SIZE, ROAD_WIDTH, ROAD_GAP, ROAD_FIRST, ROAD_COUNT, LANDMARKS } from './config.js';
 import { clamp, lerp } from './rng.js';
 import { gpsRoute } from './city.js';

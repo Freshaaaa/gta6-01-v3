@@ -8,7 +8,7 @@
 // instead of running the loop, paints it twice and sets
 // window.__shotReady for a screenshot.
 
-import * as THREE from '../vendor/three.module.js';
+import * as THREE from 'three';
 import {
   CLOCK_START_MINUTES, FEED_SEEDS, LANDMARKS, PHONE_CONTACTS, STEP,
   WEATHER_CLEAR, WEATHER_MAX_SECONDS, WEATHER_MIN_SECONDS, WEATHER_RAIN,

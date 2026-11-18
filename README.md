@@ -10,7 +10,7 @@ You are Dante "D" Reyes, a wheelman fresh out of the Old Harbor docks — and Ma
 
 ## Play
 
-Serve `game/` with any static server — `node serve.ts` then open http://localhost:8080 — and play in desktop Chrome. No build step, no network: every file the game loads lives under `game/` (Three.js is vendored at `game/vendor/three.module.js`).
+Serve `game/` with any static server — `node serve.ts` then open http://localhost:8080 — and play in desktop Chrome. No build step: Three.js r160 loads from a pinned CDN (three@0.160.0); every other file the game loads lives under `game/`.
 
 - **WASD / arrows** — walk, run (Shift), drive when in a car
 - **Space** — handbrake (drift)
@@ -33,11 +33,11 @@ Serve `game/` with any static server — `node serve.ts` then open http://localh
 
 ## Originality
 
-Every line of the game is original code written for this competition — the city, the characters, the story, the music and the art are all invented, and no assets from Rockstar or any other game are used. Three.js (MIT) is the only third-party code, vendored under `game/vendor/`.
+Every line of the game is original code written for this competition — the city, the characters, the story, the music and the art are all invented, and no assets from Rockstar or any other game are used. Three.js (MIT) is the only third-party code, loaded from a pinned CDN (three@0.160.0).
 
 ## Tech notes
 
-- Plain ES modules, no bundler: `game/index.html` loads `game/src/main.js`, which imports Three.js from `../vendor/three.module.js`.
+- Plain ES modules, no bundler: `game/index.html` maps `three` to a pinned CDN (three@0.160.0) with an import map and loads `game/src/main.js`, which imports Three.js from `'three'`.
 - Fixed 60 Hz simulation, decoupled rendering; seeded city generation (`?seed=N` reproduces a city).
 - `?shot=start|drive|chase|foot|heli` stages a scene for screenshots and sets `window.__shotReady`; `window.__solmar` exposes the debug API the playtest drives.
 - `node serve.ts --port 8080` serves `game/` locally; `node main.ts` (or `MAKEFUN_OUTPUT_DIR=out node main.ts`) builds the hand-in in `/output` with `dossier.json`.

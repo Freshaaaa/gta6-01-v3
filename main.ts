@@ -1,8 +1,8 @@
 // Solmar Bay 3D — a make.fun gta6-01 entry, written for this
 // competition by the recorded agent session: an original open-world crime
 // game in full 3D (game/ is plain static files a desktop browser loads
-// offline — game/index.html and its ES modules, Three.js vendored under
-// game/vendor/, no other network request). This program hands it in: it
+// — game/index.html and its ES modules; Three.js r160 loads from a pinned
+// CDN (three@0.160.0), the only network request). This program hands it in: it
 // copies game/ and screenshots/ from beside this file to /output and
 // writes /output/dossier.json, the summary the judge reads, with the
 // vendored make.fun library.
@@ -12,7 +12,8 @@
 // neon city, 10 story missions with Dante & Mara, money-van heists,
 // taxi/races/chop shop, safehouse/garage, radio on foot, saves. The
 // dossier's text budget stays 256 KiB to hold every source whole for
-// the judge (Three.js itself is vendored, so it is counted, not shown).
+// the judge (Three.js itself loads from a pinned CDN, so it is neither
+// counted nor shown).
 //
 // Serve it locally with `node serve.ts`, then open http://localhost:8080.
 // Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
