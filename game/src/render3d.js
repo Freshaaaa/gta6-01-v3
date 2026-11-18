@@ -8,7 +8,7 @@
 // state and paints it.
 
 import * as THREE from 'three';
-import { WORLD_SIZE, ROAD_WIDTH, ROAD_GAP, ROAD_FIRST, ROAD_COUNT, LANDMARKS } from './config.js';
+import { DISTRICTS, WORLD_SIZE, ROAD_WIDTH, ROAD_GAP, ROAD_FIRST, ROAD_COUNT, LANDMARKS } from './config.js';
 import { clamp, lerp } from './rng.js';
 import { gpsRoute } from './city.js';
 
@@ -149,30 +149,34 @@ function buildGroundTexture(city) {
   cv.width = S;
   cv.height = S;
   const g = cv.getContext('2d');
-  // District ground tints.
+  // District ground tints (v5: pushed apart so each district reads as
+  // its own place from the air and on the minimap — visual only, the
+  // layout and all mission coordinates are untouched).
   g.fillStyle = '#9aa78a';
   g.fillRect(0, 0, S, S);
   const districts = [
-    { x0: 0, y0: 0, x1: 135, y1: 270, ground: '#a8b078' },
-    { x0: 135, y0: 0, x1: 270, y1: 270, ground: '#9aa78a' },
-    { x0: 270, y0: 0, x1: 405, y1: 270, ground: '#a3ad7c' },
-    { x0: 405, y0: 0, x1: 540, y1: 270, ground: '#b5b98a' },
-    { x0: 0, y0: 270, x1: 135, y1: 540, ground: '#9db384' },
-    { x0: 135, y0: 270, x1: 270, y1: 540, ground: '#a8b078' },
-    { x0: 270, y0: 270, x1: 405, y1: 540, ground: '#a3ad7c' },
-    { x0: 405, y0: 270, x1: 540, y1: 540, ground: '#9aa78a' },
+    { x0: 0, y0: 0, x1: 135, y1: 270, ground: '#a3a86e' }, // Old Harbor — olive
+    { x0: 135, y0: 0, x1: 270, y1: 270, ground: '#8b98a8' }, // Downtown — slate blue
+    { x0: 270, y0: 0, x1: 405, y1: 270, ground: '#b59a7a' }, // Coral Row — warm coral-tan
+    { x0: 405, y0: 0, x1: 540, y1: 270, ground: '#c9b98a' }, // North Beach — sand
+    { x0: 0, y0: 270, x1: 135, y1: 540, ground: '#7fb3a0' }, // Marina — teal
+    { x0: 135, y0: 270, x1: 270, y1: 540, ground: '#b5a67e' }, // Palm Court — warm tan
+    { x0: 270, y0: 270, x1: 405, y1: 540, ground: '#a88a6e' }, // Sunset Hills — warm brown
+    { x0: 405, y0: 270, x1: 540, y1: 540, ground: '#9a8fb0' }, // The Strip — purple-grey
   ];
   for (const d of districts) {
     g.fillStyle = d.ground;
     g.fillRect(d.x0 * k, d.y0 * k, (d.x1 - d.x0) * k, (d.y1 - d.y0) * k);
   }
-  // Beach + water along the south edge.
+  // Beach + water along the south edge: stone promenade, sand, sea.
+  g.fillStyle = '#c9c2b4';
+  g.fillRect(0, 506 * k, S, 6 * k);
   g.fillStyle = '#e8d9a8';
-  g.fillRect(0, 516 * k, S, 12 * k);
+  g.fillRect(0, 512 * k, S, 14 * k);
   g.fillStyle = '#3fa7d6';
-  g.fillRect(0, 528 * k, S, 12 * k);
+  g.fillRect(0, 526 * k, S, 14 * k);
   g.fillStyle = '#57b6e0';
-  g.fillRect(0, 532 * k, S, 8 * k);
+  g.fillRect(0, 530 * k, S, 10 * k);
   // Sidewalks: light slabs inside every block.
   g.fillStyle = '#8f9296';
   for (let bj = 0; bj < ROAD_COUNT - 1; bj++) {
@@ -381,6 +385,7 @@ export class Board {
     this.city = null;
     this.carMeshes = new Map(); // car object -> mesh
     this.charMeshes = new Map(); // ped/goon object -> mesh
+    this.charGeoCache = new Map(); // shirt|pants|skin -> shared character geometry
     this.wheelMesh = null;
     this.maxCars = 64;
     this.tracers = [];
@@ -866,7 +871,14 @@ export class Board {
   getCharMesh(who) {
     let mesh = this.charMeshes.get(who);
     if (!mesh) {
-      const geo = buildCharacterGeometry(who.shirt, who.pants, who.skin);
+      // Share one merged geometry per colour combo (64 peds would
+      // otherwise build 64 throwaway geometries every respawn).
+      const key = `${who.shirt}|${who.pants}|${who.skin}`;
+      let geo = this.charGeoCache.get(key);
+      if (!geo) {
+        geo = buildCharacterGeometry(who.shirt, who.pants, who.skin);
+        this.charGeoCache.set(key, geo);
+      }
       mesh = new THREE.Mesh(geo, this.lambert);
       mesh.castShadow = true;
       this.scene.add(mesh);
@@ -879,7 +891,7 @@ export class Board {
     const mesh = this.charMeshes.get(who);
     if (mesh) {
       this.scene.remove(mesh);
-      mesh.geometry.dispose();
+      // Geometry is shared via charGeoCache — do not dispose it here.
       this.charMeshes.delete(who);
     }
   }
@@ -1292,6 +1304,47 @@ export class Board {
     if (this.groundCanvas) {
       g.drawImage(this.groundCanvas, -px * scale, -pz * scale, WORLD_SIZE * scale, WORLD_SIZE * scale);
     }
+    // Roads, redrawn brighter on top of the texture (v5): the texture's
+    // asphalt is low-contrast at minimap scale. Only the roads in view
+    // (72 m around the player) are drawn, with edge lines and dashes.
+    {
+      const vis = 72; // metres either side of the player to draw
+      const hw = ROAD_WIDTH / 2;
+      g.fillStyle = '#333842';
+      for (const r of roadLines) {
+        if (Math.abs(r - pz) < vis) {
+          g.fillRect(-vis * scale, (r - hw - pz) * scale, 2 * vis * scale, ROAD_WIDTH * scale);
+        }
+        if (Math.abs(r - px) < vis) {
+          g.fillRect((r - hw - px) * scale, -vis * scale, ROAD_WIDTH * scale, 2 * vis * scale);
+        }
+      }
+      // Edge lines + centre dashes for the roads in view.
+      g.fillStyle = '#4a5160';
+      for (const r of roadLines) {
+        if (Math.abs(r - pz) < vis) {
+          g.fillRect(-vis * scale, (r - hw - pz) * scale, 2 * vis * scale, 0.8 * scale);
+          g.fillRect(-vis * scale, (r + hw - 0.8 - pz) * scale, 2 * vis * scale, 0.8 * scale);
+        }
+        if (Math.abs(r - px) < vis) {
+          g.fillRect((r - hw - px) * scale, -vis * scale, 0.8 * scale, 2 * vis * scale);
+          g.fillRect((r + hw - 0.8 - px) * scale, -vis * scale, 0.8 * scale, 2 * vis * scale);
+        }
+      }
+      g.fillStyle = '#e8d47a';
+      for (const r of roadLines) {
+        if (Math.abs(r - pz) < vis) {
+          for (let m = Math.floor((px - vis) / 14) * 14; m < px + vis; m += 14) {
+            g.fillRect((m - px) * scale, (r - 0.35 - pz) * scale, 4 * scale, 0.7 * scale);
+          }
+        }
+        if (Math.abs(r - px) < vis) {
+          for (let m = Math.floor((pz - vis) / 14) * 14; m < pz + vis; m += 14) {
+            g.fillRect((r - 0.35 - px) * scale, (m - pz) * scale, 0.7 * scale, 4 * scale);
+          }
+        }
+      }
+    }
     // GPS route to the active objective.
     if (state.gpsRoute && state.gpsRoute.length > 1) {
       g.strokeStyle = '#ffd700';
@@ -1315,6 +1368,29 @@ export class Board {
       g.stroke();
       g.fillStyle = 'rgba(255,60,60,0.15)';
       g.fill();
+    }
+    // Landmark labels (v5): name the places in view, kept upright
+    // against the heading-up rotation so they stay readable.
+    {
+      const rot = player.yaw + Math.PI;
+      g.font = 'bold 9px sans-serif';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      const maxR = S / 2 - 10;
+      for (const lm of Object.values(LANDMARKS)) {
+        const dx = (lm.x - px) * scale;
+        const dy = (lm.z - pz) * scale;
+        if (Math.hypot(dx, dy) > maxR) continue;
+        const w = g.measureText(lm.label).width;
+        g.save();
+        g.translate(dx, dy);
+        g.rotate(-rot);
+        g.fillStyle = 'rgba(0,0,0,0.55)';
+        g.fillRect(-w / 2 - 3, -6, w + 6, 12);
+        g.fillStyle = '#ffffff';
+        g.fillText(lm.label, 0, 0);
+        g.restore();
+      }
     }
     // Checkpoints.
     if (state.checkpoints) {
@@ -1351,6 +1427,19 @@ export class Board {
       g.arc((car.x - px) * scale, (car.z - pz) * scale, 3.5, 0, Math.PI * 2);
       g.fill();
     }
+    // Pedestrians (v5): warm dots so the streets read as alive.
+    if (state.peds) {
+      g.fillStyle = '#f0c8a0';
+      const maxR = S / 2 - 4;
+      for (const ped of state.peds) {
+        const dx = (ped.x - px) * scale;
+        const dy = (ped.z - pz) * scale;
+        if (Math.hypot(dx, dy) > maxR) continue;
+        g.beginPath();
+        g.arc(dx, dy, 2, 0, Math.PI * 2);
+        g.fill();
+      }
+    }
     // Heli.
     if (state.heli && state.heli.active) {
       g.fillStyle = '#ffffff';
@@ -1360,15 +1449,41 @@ export class Board {
       g.fillText('H', (state.heli.x - px) * scale, (state.heli.z - pz) * scale);
     }
     g.restore();
-    // Player arrow (centre, heading up).
+    // District name (v5): the neighbourhood the player is in, bottom
+    // centre inside the circle.
+    {
+      let district = DISTRICTS[0];
+      for (const d of DISTRICTS) {
+        if (player.x >= d.x0 && player.x < d.x1 && player.z >= d.y0 && player.z < d.y1) { district = d; break; }
+      }
+      const label = district.name.toUpperCase();
+      g.font = 'bold 10px sans-serif';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      const w = g.measureText(label).width;
+      g.fillStyle = 'rgba(0,0,0,0.55)';
+      g.fillRect(cx - w / 2 - 5, S - 22, w + 10, 14);
+      g.fillStyle = '#ffffff';
+      g.fillText(label, cx, S - 15);
+    }
+    // Player arrow (centre, heading up) — v5: larger, with a soft
+    // shadow so it reads against any ground colour.
+    g.fillStyle = 'rgba(0,0,0,0.55)';
+    g.beginPath();
+    g.moveTo(cx, cy - 10.5 + 1.5);
+    g.lineTo(cx + 7, cy + 7.5 + 1.5);
+    g.lineTo(cx, cy + 3 + 1.5);
+    g.lineTo(cx - 7, cy + 7.5 + 1.5);
+    g.closePath();
+    g.fill();
     g.fillStyle = '#ffffff';
     g.strokeStyle = '#111111';
-    g.lineWidth = 1.5;
+    g.lineWidth = 2;
     g.beginPath();
-    g.moveTo(cx, cy - 8);
-    g.lineTo(cx + 5.5, cy + 6);
-    g.lineTo(cx, cy + 2.5);
-    g.lineTo(cx - 5.5, cy + 6);
+    g.moveTo(cx, cy - 10.5);
+    g.lineTo(cx + 7, cy + 7.5);
+    g.lineTo(cx, cy + 3);
+    g.lineTo(cx - 7, cy + 7.5);
     g.closePath();
     g.fill();
     g.stroke();
