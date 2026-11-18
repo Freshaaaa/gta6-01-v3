@@ -1,105 +1,101 @@
-// Solmar Bay: Heatwave — keyboard + mouse input. Tracks held keys,
-// edge-triggered presses (so E / P / F / R fire once per tap), and the
-// mouse position in canvas pixels plus world coordinates (filled in by the
-// camera each frame).
+// Solmar Bay 3D — keyboard + mouse input. Tracks held keys,
+// edge-triggered presses (so E / P / C / G / R fire once per tap), and
+// the mouse position in normalized device coordinates (main.js turns it
+// into a ground-plane aim point through the camera each frame).
 
-export const ACTION_CONFIRM = 'confirm'; // Enter / Space / click
-export const ACTION_PAUSE = 'pause';     // P or Escape
-export const ACTION_INTERACT = 'interact'; // E
-export const ACTION_ATTACK = 'attack';   // F (melee) — mouse click shoots
-export const ACTION_MUTE = 'mute';       // M
-export const ACTION_SPRINT = 'sprint';   // Shift
-export const ACTION_RADIO = 'radio';     // R — next radio station
-export const ACTION_WEAPON_NEXT = 'weaponNext'; // Q — cycle weapon
-export const ACTION_WEAPON_1 = 'weapon1'; // 1 — pistol
-export const ACTION_WEAPON_2 = 'weapon2'; // 2 — SMG
-export const ACTION_WEAPON_3 = 'weapon3'; // 3 — shotgun
-export const ACTION_WEAPON_4 = 'weapon4'; // 4 — rifle
-export const ACTION_TAXI = 'taxi';       // T — start a taxi fare
-export const ACTION_RACE = 'race';       // Y — start a street race
+export function createInput() {
+  return {
+    forward: false, back: false, left: false, right: false,
+    run: false, handbrake: false,
+    interact: false,        // E held (for hold-to-crack)
+    interactPressed: false, // E edge
+    punch: false,           // F edge
+    pausePressed: false,    // P / Escape edge
+    confirmPressed: false,  // Enter / Space edge (dialogue, menus)
+    radioNext: false,       // R edge
+    radioPrev: false,       // Q edge
+    phonePressed: false,    // C edge
+    garagePressed: false,   // G edge
+    taxiPressed: false,     // T edge (start taxi fare / street race)
+    mutePressed: false,     // M edge
+    digit: -1,              // digit key pressed this frame (0-6), -1 none
+    weaponKey: -1,          // 1-4 weapon select
+    mouseDown: false,
+    mouseX: 0, mouseY: 0,   // NDC (-1..1)
+    mouseMoved: false,
+    keys: new Set(),
+  };
+}
 
-const KEY_BINDINGS = {
-  KeyW: 'up', ArrowUp: 'up',
-  KeyS: 'down', ArrowDown: 'down',
+const KEYMAP = {
+  KeyW: 'forward', ArrowUp: 'forward',
+  KeyS: 'back', ArrowDown: 'back',
   KeyA: 'left', ArrowLeft: 'left',
   KeyD: 'right', ArrowRight: 'right',
-  ShiftLeft: 'sprint', ShiftRight: 'sprint',
-  KeyE: 'interact',
-  KeyF: 'attack',
-  KeyP: 'pause', Escape: 'pause',
-  KeyM: 'mute',
-  KeyR: 'radio',
-  KeyQ: 'weaponNext',
-  KeyT: 'taxi',
-  KeyY: 'race',
-  Digit1: 'weapon1',
-  Digit2: 'weapon2',
-  Digit3: 'weapon3',
-  Digit4: 'weapon4',
-  Enter: 'confirm', Space: 'confirm',
-  KeyH: 'help',
+  ShiftLeft: 'run', ShiftRight: 'run',
+  Space: 'handbrake',
 };
 
-export function createInput(canvas) {
-  const held = new Set();
-  const pressed = new Set(); // edge-triggered: consumed by takePressed()
-  const mouse = { x: 0, y: 0, worldX: 0, worldY: 0, down: false, clicked: false };
-
-  function onKeyDown(e) {
-    const action = KEY_BINDINGS[e.code];
-    if (action) {
-      if (!e.repeat) pressed.add(action);
-      held.add(action);
-      e.preventDefault();
+export function attachInput(input, canvas) {
+  const down = (e) => {
+    if (e.repeat) return;
+    const held = KEYMAP[e.code];
+    if (held) input[held] = true;
+    input.keys.add(e.code);
+    if (e.code === 'KeyE') { input.interact = true; input.interactPressed = true; }
+    if (e.code === 'KeyF') input.punch = true;
+    if (e.code === 'KeyP' || e.code === 'Escape') input.pausePressed = true;
+    if (e.code === 'Enter') input.confirmPressed = true;
+    if (e.code === 'KeyR') input.radioNext = true;
+    if (e.code === 'KeyQ') input.radioPrev = true;
+    if (e.code === 'KeyC') input.phonePressed = true;
+    if (e.code === 'KeyG') input.garagePressed = true;
+    if (e.code === 'KeyT') input.taxiPressed = true;
+    if (e.code === 'KeyM') input.mutePressed = true;
+    if (e.code.startsWith('Digit')) {
+      const n = Number(e.code.slice(5));
+      input.digit = n;
+      if (n >= 1 && n <= 4) input.weaponKey = n;
     }
-  }
-  function onKeyUp(e) {
-    const action = KEY_BINDINGS[e.code];
-    if (action) held.delete(action);
-  }
-  function onMouseMove(e) {
-    const rect = canvas.getBoundingClientRect();
-    mouse.x = e.clientX - rect.left;
-    mouse.y = e.clientY - rect.top;
-  }
-  function onMouseDown(e) {
-    if (e.button === 0) { mouse.down = true; mouse.clicked = true; }
-  }
-  function onMouseUp(e) {
-    if (e.button === 0) mouse.down = false;
-  }
-
-  window.addEventListener('keydown', onKeyDown);
-  window.addEventListener('keyup', onKeyUp);
-  canvas.addEventListener('mousemove', onMouseMove);
-  canvas.addEventListener('mousedown', onMouseDown);
-  window.addEventListener('mouseup', onMouseUp);
-  // A key released while the tab is hidden never sends keyup.
-  window.addEventListener('blur', () => held.clear());
-
-  return {
-    held,
-    mouse,
-    isHeld(action) { return held.has(action); },
-    // True once after the key went down; clears on read.
-    takePressed(action) {
-      if (pressed.has(action)) { pressed.delete(action); return true; }
-      return false;
-    },
-    takeClick() {
-      if (mouse.clicked) { mouse.clicked = false; return true; }
-      return false;
-    },
-    // Movement vector from held keys, normalised.
-    moveVector() {
-      let x = 0, y = 0;
-      if (held.has('left')) x -= 1;
-      if (held.has('right')) x += 1;
-      if (held.has('up')) y -= 1;
-      if (held.has('down')) y += 1;
-      if (x !== 0 && y !== 0) { x *= Math.SQRT1_2; y *= Math.SQRT1_2; }
-      return { x, y };
-    },
-    endFrame() { pressed.clear(); mouse.clicked = false; },
+    if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
   };
+  const up = (e) => {
+    const held = KEYMAP[e.code];
+    if (held) input[held] = false;
+    input.keys.delete(e.code);
+    if (e.code === 'KeyE') input.interact = false;
+  };
+  window.addEventListener('keydown', down);
+  window.addEventListener('keyup', up);
+  canvas.addEventListener('mousedown', (e) => {
+    if (e.button === 0) input.mouseDown = true;
+  });
+  window.addEventListener('mouseup', (e) => {
+    if (e.button === 0) input.mouseDown = false;
+  });
+  canvas.addEventListener('mousemove', (e) => {
+    const r = canvas.getBoundingClientRect();
+    input.mouseX = ((e.clientX - r.left) / r.width) * 2 - 1;
+    input.mouseY = -(((e.clientY - r.top) / r.height) * 2 - 1);
+    input.mouseMoved = true;
+  });
+  // Prevent the context menu from eating right-clicks.
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+}
+
+/** Clear the edge-triggered flags at the end of each frame. */
+export function clearEdges(input) {
+  input.interactPressed = false;
+  input.punch = false;
+  input.pausePressed = false;
+  input.confirmPressed = false;
+  input.radioNext = false;
+  input.radioPrev = false;
+  input.phonePressed = false;
+  input.garagePressed = false;
+  input.taxiPressed = false;
+  input.mutePressed = false;
+  input.digit = -1;
+  input.weaponKey = -1;
+  input.mouseMoved = false;
 }

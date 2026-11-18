@@ -3,19 +3,127 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Solmar Bay: Heatwave — an original open-world crime game. 10 story missions, money-van heists, rain and storms, 4 weapons, police helicopters, taxi fares and street races in a sun-soaked coastal city.">
-<title>Solmar Bay: Heatwave — An Open-World Crime Story</title>
+<meta name="description" content="Solmar Bay 3D — a full 3D open-world crime game. Drive a living Vice City-inspired bay, pull 10 story missions with Dante & Mara, lose the cops, crack the money van, and take the Bay. Three.js, no network.">
+<title>Solmar Bay 3D — An Open-World Crime Story</title>
 <link rel="icon" href="data:,">
 <style>
-  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0e1a; }
-  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
-  /* Read aloud, never shown: the status line screen readers announce. */
-  #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0e1a; font-family: 'Segoe UI', Arial, sans-serif; }
+  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #hud { position: fixed; inset: 0; pointer-events: none; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.8); }
+  .panel { background: rgba(8, 10, 18, .55); border-radius: 6px; padding: 6px 10px; }
+  /* top right: cash + wanted */
+  #top-right { position: absolute; top: 14px; right: 16px; text-align: right; }
+  #cash { font-size: 26px; font-weight: 800; color: #7dff9a; }
+  #stars { font-size: 22px; letter-spacing: 2px; margin-top: 2px; }
+  #stars.flashing { animation: starflash .5s steps(2) infinite; }
+  @keyframes starflash { 50% { opacity: .35; } }
+  /* top left: radio + clock */
+  #top-left { position: absolute; top: 14px; left: 16px; }
+  #radio { font-size: 13px; color: #ffd700; }
+  #clock-line { font-size: 15px; margin-top: 2px; }
+  #clock { font-weight: 700; }
+  #weather { color: #cfe3ff; }
+  /* top centre: objective + mission banner */
+  #objective { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); font-size: 15px; font-weight: 600; max-width: 46vw; text-align: center; }
+  #mission-banner { position: absolute; top: 22%; left: 50%; transform: translateX(-50%); text-align: center; opacity: 0; transition: opacity .4s; }
+  #mission-banner-title { font-size: 44px; font-weight: 900; letter-spacing: 3px; color: #ffd700; }
+  #mission-banner-sub { font-size: 16px; color: #fff; }
+  /* bottom left: minimap + health */
+  #bottom-left { position: absolute; left: 16px; bottom: 16px; }
+  #minimap { width: 190px; height: 190px; border-radius: 50%; border: 3px solid rgba(255,255,255,.35); box-shadow: 0 2px 12px rgba(0,0,0,.6); background: #10131c; }
+  #health-wrap { margin-top: 8px; display: flex; align-items: center; gap: 8px; }
+  #health-bar { width: 150px; height: 10px; background: rgba(0,0,0,.55); border-radius: 5px; overflow: hidden; }
+  #health-fill { height: 100%; width: 100%; background: #2ecc71; }
+  #health-num { font-size: 13px; font-weight: 700; }
+  /* bottom right: speed + weapon */
+  #bottom-right { position: absolute; right: 18px; bottom: 16px; text-align: right; }
+  #speed { font-size: 52px; font-weight: 900; line-height: 1; }
+  #speed-label { font-size: 13px; color: #dfe6ee; }
+  #weapon-line { margin-top: 6px; font-size: 14px; }
+  #weapon { font-weight: 700; }
+  #ammo { color: #ffd700; font-weight: 700; }
+  /* centre: toast + prompt */
+  #toast { position: absolute; left: 50%; bottom: 24%; transform: translateX(-50%); font-size: 19px; font-weight: 700; color: #ffd700; text-align: center; opacity: 0; transition: opacity .3s; max-width: 70vw; }
+  #prompt { position: absolute; left: 50%; bottom: 15%; transform: translateX(-50%); font-size: 15px; color: #fff; background: rgba(8,10,18,.6); padding: 5px 12px; border-radius: 5px; }
+  /* dialogue */
+  #dialogue { position: absolute; left: 50%; bottom: 8%; transform: translateX(-50%); width: min(680px, 86vw); background: rgba(8,10,18,.78); border-left: 4px solid #ffd700; border-radius: 6px; padding: 12px 16px; display: none; }
+  #dialogue-name { font-weight: 800; color: #ffd700; font-size: 14px; letter-spacing: 1px; }
+  #dialogue-text { font-size: 16px; line-height: 1.45; margin-top: 3px; }
+  /* phone */
+  #phone { position: absolute; top: 70px; right: 16px; width: 300px; background: rgba(10,12,20,.92); border: 1px solid rgba(255,255,255,.25); border-radius: 12px; padding: 12px; display: none; pointer-events: auto; }
+  #phone h3 { margin: 0 0 8px; font-size: 14px; color: #ffd700; letter-spacing: 1px; }
+  .feed-post { border-top: 1px solid rgba(255,255,255,.14); padding: 7px 0; font-size: 13px; line-height: 1.35; }
+  .feed-post b { display: block; color: #7fd4ff; }
+  .contact { padding: 5px 0; font-size: 13px; border-top: 1px solid rgba(255,255,255,.1); }
+  .contact b { color: #fff; }
+  .contact span { display: block; color: #aab4c4; font-size: 12px; }
+  /* garage */
+  #garage { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(560px, 90vw); background: rgba(10,12,20,.94); border: 1px solid rgba(255,255,255,.25); border-radius: 10px; padding: 16px; display: none; pointer-events: auto; }
+  #garage h3 { margin: 0 0 10px; color: #ffd700; letter-spacing: 1px; }
+  .garage-row { display: grid; grid-template-columns: 1.6fr 1fr 1fr 1fr; gap: 8px; padding: 6px 0; border-top: 1px solid rgba(255,255,255,.12); font-size: 14px; }
+  .garage-head { font-weight: 700; color: #aab4c4; }
+  .garage-hint { margin-top: 10px; font-size: 12px; color: #aab4c4; line-height: 1.5; }
+  /* menu overlay (title / pause / wasted / busted) */
+  #menu { position: absolute; inset: 0; display: none; background: radial-gradient(ellipse at 50% 35%, rgba(20,16,48,.55), rgba(5,6,14,.88)); text-align: center; pointer-events: auto; }
+  #menu-inner { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(720px, 90vw); }
+  #menu-title { font-size: 72px; font-weight: 900; letter-spacing: 6px; color: #ffd700; line-height: .95; }
+  #menu-sub { font-size: 18px; margin-top: 12px; color: #fff; }
+  #menu-hint { font-size: 15px; margin-top: 26px; color: #cfe3ff; }
+  #menu-controls { font-size: 13px; margin-top: 34px; color: #9fb0c8; line-height: 1.9; }
+  #wanted-flash { position: absolute; inset: 0; background: #c00; opacity: 0; pointer-events: none; }
+  #help { position: absolute; right: 16px; top: 50%; transform: translateY(-50%); font-size: 12px; color: rgba(255,255,255,.55); text-align: right; line-height: 1.7; display: none; }
 </style>
 </head>
 <body>
-<canvas id="game" aria-label="Solmar Bay: Heatwave — an open-world crime game. Walk and drive around the city, steal cars, crack money vans, take missions, outrun the police and their helicopter, in sun, rain and storms."></canvas>
-<p id="status" role="status" aria-live="polite"></p>
+<canvas id="game"></canvas>
+<div id="hud">
+  <div id="wanted-flash"></div>
+  <div id="top-right">
+    <div id="cash">$0</div>
+    <div id="stars" class="stars">☆☆☆☆☆☆</div>
+  </div>
+  <div id="top-left">
+    <div id="radio" class="panel">♪ Coastal Groove</div>
+    <div id="clock-line" class="panel"><span id="clock">17:30</span> · <span id="weather">☀️ Clear</span></div>
+  </div>
+  <div id="objective" class="panel">Free roam — visit the Hideout for work</div>
+  <div id="mission-banner">
+    <div id="mission-banner-title"></div>
+    <div id="mission-banner-sub"></div>
+  </div>
+  <div id="bottom-left">
+    <canvas id="minimap" width="190" height="190"></canvas>
+    <div id="health-wrap"><div id="health-bar"><div id="health-fill"></div></div><span id="health-num">100</span></div>
+  </div>
+  <div id="bottom-right">
+    <div id="speed"></div>
+    <div id="speed-label">On foot</div>
+    <div id="weapon-line"><span id="weapon">Pistol</span> · <span id="ammo">∞</span></div>
+  </div>
+  <div id="toast"></div>
+  <div id="prompt"></div>
+  <div id="dialogue"><div id="dialogue-name"></div><div id="dialogue-text"></div></div>
+  <div id="phone">
+    <h3>📱 SOLMAR FEED</h3>
+    <div id="phone-feed"></div>
+    <h3 style="margin-top:12px">CONTACTS</h3>
+    <div id="phone-contacts"></div>
+    <div style="margin-top:10px;font-size:12px;color:#aab4c4">Radio plays on foot too — R next station · Q previous</div>
+  </div>
+  <div id="garage">
+    <h3>🏠 HIDEOUT GARAGE</h3>
+    <div id="garage-list"></div>
+  </div>
+  <div id="menu"><div id="menu-inner">
+    <div id="menu-title">SOLMAR BAY</div>
+    <div id="menu-sub"></div>
+    <div id="menu-hint"></div>
+    <div id="menu-controls">
+      WASD drive / walk · Mouse aim · Click shoot · E interact / enter car · T taxi / race · Space handbrake<br>
+      Shift run · F punch · 1–4 weapons · R/Q radio · C phone · G garage · M mute · P pause
+    </div>
+  </div></div>
+</div>
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>

@@ -1,240 +1,350 @@
-// Solmar Bay: Heatwave — the city itself. A seeded generator lays a 9x9
-// street grid over the world, fills each block with buildings (palettes per
-// district, towers downtown), parks and trees, and places the ten story
-// landmarks, the marina with its boats, the pier and the lighthouse. It
-// also answers the two questions the physics needs: "is this point on a
-// road?" and "does this circle hit a building?".
+// Solmar Bay 3D — the city itself. A seeded generator lays a 9x9 street
+// grid over the world, fills each block with buildings (palettes per
+// district, towers downtown, neon signs on the Strip), parks and trees,
+// and places the ten story landmarks, the marina, the pier and the
+// lighthouse. It also builds the lane graph the traffic, police, GPS and
+// minimap all share, and answers the questions the physics needs: "is
+// this point on a road?", "does this circle hit a building?" and "does
+// this sight line cross a building?".
 
 import {
-  COIN_COUNT, DISTRICTS, LANDMARKS, ROAD_COUNT, ROAD_FIRST, ROAD_GAP,
-  ROAD_WIDTH, WORLD_SIZE,
+  COIN_COUNT, DISTRICTS, LANDMARKS, NEON_COLORS, ROAD_COUNT, ROAD_FIRST,
+  ROAD_GAP, ROAD_WIDTH, WORLD_SIZE,
 } from './config.js';
-import { floatBetween, intBetween, pick } from './rng.js';
+import { clamp, mulberry32, pick, rand, randInt } from './rng.js';
 
-export function roadCenters() {
-  const centers = [];
-  for (let i = 0; i < ROAD_COUNT; i += 1) centers.push(ROAD_FIRST + i * ROAD_GAP);
-  return centers;
-}
+export const roadLines = [];
+for (let i = 0; i < ROAD_COUNT; i++) roadLines.push(ROAD_FIRST + i * ROAD_GAP);
 
-export function isOnRoad(x, y) {
-  const half = ROAD_WIDTH / 2;
-  for (let i = 0; i < ROAD_COUNT; i += 1) {
-    const c = ROAD_FIRST + i * ROAD_GAP;
-    if (Math.abs(x - c) < half || Math.abs(y - c) < half) return true;
-  }
-  return false;
-}
-
-// Nearest road centre line to a coordinate (used to snap traffic to lanes).
-export function nearestRoad(value) {
-  let best = ROAD_FIRST;
-  let bestDist = Infinity;
-  for (let i = 0; i < ROAD_COUNT; i += 1) {
-    const c = ROAD_FIRST + i * ROAD_GAP;
-    const d = Math.abs(value - c);
-    if (d < bestDist) { bestDist = d; best = c; }
-  }
-  return best;
-}
-
-export function districtAt(x, y) {
+function districtAt(x, z) {
   for (const d of DISTRICTS) {
-    if (x >= d.x0 && x < d.x1 && y >= d.y0 && y < d.y1) return d;
+    if (x >= d.x0 && x < d.x1 && z >= d.y0 && z < d.y1) return d;
   }
   return DISTRICTS[0];
 }
 
-export function createCity(rng) {
-  const buildings = [];
-  const trees = [];
-  const lamps = [];
-  const parks = [];
-  const boats = [];
-  const centers = roadCenters();
-  const halfRoad = ROAD_WIDTH / 2;
+function nearestRoadCoord(v) {
+  let best = roadLines[0];
+  for (const r of roadLines) if (Math.abs(v - r) < Math.abs(v - best)) best = r;
+  return best;
+}
 
-  // Blocks sit between neighbouring roads. Each block gets 1-4 buildings,
-  // a park, or a plaza, with a margin so sidewalks stay walkable.
-  for (let bx = 0; bx < ROAD_COUNT - 1; bx += 1) {
-    for (let by = 0; by < ROAD_COUNT - 1; by += 1) {
-      const x0 = centers[bx] + halfRoad + 14;
-      const y0 = centers[by] + halfRoad + 14;
-      const x1 = centers[bx + 1] - halfRoad - 14;
-      const y1 = centers[by + 1] - halfRoad - 14;
-      const cx = (x0 + x1) / 2;
-      const cy = (y0 + y1) / 2;
-      const district = districtAt(cx, cy);
-      const roll = rng();
+export function isOnRoad(x, z) {
+  for (const r of roadLines) {
+    if (Math.abs(x - r) <= ROAD_WIDTH / 2 + 1.5) return true;
+    if (Math.abs(z - r) <= ROAD_WIDTH / 2 + 1.5) return true;
+  }
+  return false;
+}
 
-      if (roll < 0.12) {
-        // Park: grass, trees, a pond.
-        parks.push({ x0, y0, x1, y1 });
-        const n = intBetween(rng, 4, 7);
-        for (let t = 0; t < n; t += 1) {
-          trees.push({ x: floatBetween(rng, x0 + 20, x1 - 20), y: floatBetween(rng, y0 + 20, y1 - 20), r: floatBetween(rng, 10, 16) });
+/** Distance from (x, z) to the nearest road centre line. */
+export function distToRoad(x, z) {
+  let best = Infinity;
+  for (const r of roadLines) {
+    best = Math.min(best, Math.abs(x - r), Math.abs(z - r));
+  }
+  return best;
+}
+
+export function generateCity(seed) {
+  const rng = mulberry32(seed);
+  const city = {
+    seed,
+    buildings: [],   // {x, z, w, d, h, color, neon, neonColor, roof}
+    trees: [],       // {x, z, s}
+    lamps: [],       // {x, z}
+    coins: [],       // {x, z, taken}
+    parking: [],     // {x, z, yaw}
+    nodes: [],       // lane graph nodes {x, z}
+    lanes: [],       // directed lanes {x0,z0,x1,z1,from,to,len,axis}
+    nodeOut: [],     // per node: list of lane indices
+    props: [],       // knockable/static small props {x, z, r, kind}
+    landmarkBuildings: {},
+  };
+
+  // ---- lane graph: 9x9 intersection nodes, directed lanes both ways ----
+  const nodeIndex = (i, j) => j * ROAD_COUNT + i;
+  for (let j = 0; j < ROAD_COUNT; j++) {
+    for (let i = 0; i < ROAD_COUNT; i++) {
+      city.nodes.push({ x: roadLines[i], z: roadLines[j] });
+    }
+  }
+  city.nodeOut = city.nodes.map(() => []);
+  const addLane = (from, to) => {
+    const a = city.nodes[from];
+    const b = city.nodes[to];
+    const len = Math.hypot(b.x - a.x, b.z - a.z);
+    const lane = { x0: a.x, z0: a.z, x1: b.x, z1: b.z, from, to, len, axis: a.x === b.x ? 'z' : 'x' };
+    const idx = city.lanes.length;
+    city.lanes.push(lane);
+    city.nodeOut[from].push(idx);
+  };
+  for (let j = 0; j < ROAD_COUNT; j++) {
+    for (let i = 0; i < ROAD_COUNT; i++) {
+      if (i + 1 < ROAD_COUNT) { addLane(nodeIndex(i, j), nodeIndex(i + 1, j)); addLane(nodeIndex(i + 1, j), nodeIndex(i, j)); }
+      if (j + 1 < ROAD_COUNT) { addLane(nodeIndex(i, j), nodeIndex(i, j + 1)); addLane(nodeIndex(i, j + 1), nodeIndex(i, j)); }
+    }
+  }
+
+  // ---- blocks: 8x8, one per gap between roads ----
+  const blockSize = ROAD_GAP - ROAD_WIDTH; // 46 m of interior
+  const isPlazaBlock = (bi, bj) => (bi === 3 || bi === 4) && (bj === 3 || bj === 4);
+  for (let bj = 0; bj < ROAD_COUNT - 1; bj++) {
+    for (let bi = 0; bi < ROAD_COUNT - 1; bi++) {
+      const cx = roadLines[bi] + ROAD_GAP / 2;
+      const cz = roadLines[bj] + ROAD_GAP / 2;
+      const d = districtAt(cx, cz);
+      const plaza = isPlazaBlock(bi, bj);
+      if (plaza) {
+        // Solmar Plaza: open square with one landmark tower and a fountain.
+        city.buildings.push({
+          x: cx, z: cz - 8, w: 16, d: 16, h: 52, color: '#8b98ac', neon: false,
+          neonColor: null, roof: true, landmark: 'plaza-tower',
+        });
+        city.props.push({ x: cx, z: cz + 10, r: 4, kind: 'fountain' });
+        for (let t = 0; t < 6; t++) {
+          city.trees.push({ x: cx + rand(rng, -18, 18), z: cz + rand(rng, 4, 18), s: rand(rng, 0.8, 1.2) });
         }
         continue;
       }
-
-      const count = roll < 0.45 ? 1 : roll < 0.8 ? 2 : 4;
-      if (count === 1) {
-        const w = floatBetween(rng, 150, 220);
-        const h = floatBetween(rng, 150, 220);
-        buildings.push(makeBuilding(cx - w / 2, cy - h / 2, w, h, district, rng));
-      } else if (count === 2) {
-        const vertical = rng() < 0.5;
-        for (let k = 0; k < 2; k += 1) {
-          if (vertical) {
-            const w = (x1 - x0) * 0.42;
-            const h = floatBetween(rng, 150, 220);
-            buildings.push(makeBuilding(x0 + k * ((x1 - x0) * 0.58), cy - h / 2, w, h, district, rng));
-          } else {
-            const w = floatBetween(rng, 150, 220);
-            const h = (y1 - y0) * 0.42;
-            buildings.push(makeBuilding(cx - w / 2, y0 + k * ((y1 - y0) * 0.58), w, h, district, rng));
-          }
+      const roll = rng();
+      if (roll < 0.12) {
+        // Park: grass, trees, a bench or two.
+        for (let t = 0; t < randInt(rng, 7, 11); t++) {
+          city.trees.push({ x: cx + rand(rng, -18, 18), z: cz + rand(rng, -18, 18), s: rand(rng, 0.8, 1.4) });
         }
-      } else {
-        const w = (x1 - x0) * 0.44;
-        const h = (y1 - y0) * 0.44;
-        for (let gx = 0; gx < 2; gx += 1) {
-          for (let gy = 0; gy < 2; gy += 1) {
-            buildings.push(makeBuilding(x0 + gx * (w + 12), y0 + gy * (h + 12), w, h, district, rng));
-          }
-        }
+        city.props.push({ x: cx, z: cz, r: 3, kind: 'fountain' });
+        continue;
       }
-
-      // A palm or two on the block corners, clear of the buildings.
-      if (rng() < 0.7) {
-        trees.push({ x: x0 + 12, y: y0 + 12, r: 11, palm: rng() < 0.6 });
-        trees.push({ x: x1 - 12, y: y1 - 12, r: 11, palm: rng() < 0.6 });
+      // Buildings: 1–4 lots per block.
+      const lots = randInt(rng, 1, 4);
+      const tall = d.name === 'Downtown' || d.name === 'The Strip';
+      for (let l = 0; l < lots; l++) {
+        const w = rand(rng, 10, 24);
+        const dd = rand(rng, 10, 24);
+        const bx = cx + rand(rng, -blockSize / 2 + w / 2 + 3, blockSize / 2 - w / 2 - 3);
+        const bz = cz + rand(rng, -blockSize / 2 + dd / 2 + 3, blockSize / 2 - dd / 2 - 3);
+        // Never cover a landmark marker.
+        let blocked = false;
+        for (const lm of Object.values(LANDMARKS)) {
+          if (Math.abs(lm.x - bx) < w / 2 + 12 && Math.abs(lm.z - bz) < dd / 2 + 12) { blocked = true; break; }
+        }
+        if (blocked) continue;
+        const h = tall ? rand(rng, 22, 68) : rand(rng, 8, 26);
+        const neon = (d.name === 'The Strip' || d.name === 'Downtown' || d.name === 'Marina') && rng() < 0.45;
+        city.buildings.push({
+          x: bx, z: bz, w, d: dd, h, color: pick(rng, d.palette),
+          neon, neonColor: neon ? pick(rng, NEON_COLORS) : null,
+          roof: rng() < 0.3, landmark: null,
+        });
+      }
+      // Street trees along the block edges.
+      for (let t = 0; t < 3; t++) {
+        const side = randInt(rng, 0, 3);
+        const along = rand(rng, -18, 18);
+        const off = blockSize / 2 + 1.5;
+        if (side === 0) city.trees.push({ x: cx + along, z: cz - off, s: rand(rng, 0.8, 1.2) });
+        else if (side === 1) city.trees.push({ x: cx + along, z: cz + off, s: rand(rng, 0.8, 1.2) });
+        else if (side === 2) city.trees.push({ x: cx - off, z: cz + along, s: rand(rng, 0.8, 1.2) });
+        else city.trees.push({ x: cx + off, z: cz + along, s: rand(rng, 0.8, 1.2) });
       }
     }
   }
 
-  // Street lamps along every road, every other block.
-  for (const c of centers) {
-    for (let i = 0; i < ROAD_COUNT - 1; i += 1) {
-      const along = centers[i] + ROAD_GAP / 2;
-      lamps.push({ x: c + halfRoad + 6, y: along });
-      lamps.push({ x: along, y: c - halfRoad - 6 });
+  // Landmark buildings: diner, bank, casino, city hall, stadium (big,
+  // distinct, and named on the minimap). Placed beside their markers.
+  const landmarkDefs = [
+    { key: 'diner', w: 18, d: 12, h: 9, color: '#e07856', neon: true, neonColor: '#ff2e63' },
+    { key: 'bank', w: 22, d: 14, h: 18, color: '#dcc98f', neon: false },
+    { key: 'casino', w: 26, d: 16, h: 22, color: '#8e6fb8', neon: true, neonColor: '#00cec9' },
+    { key: 'cityhall', w: 20, d: 14, h: 20, color: '#7d8aa0', neon: false },
+    { key: 'stadium', w: 30, d: 22, h: 14, color: '#c98f7a', neon: true, neonColor: '#f1c40f' },
+  ];
+  for (const def of landmarkDefs) {
+    const lm = LANDMARKS[def.key];
+    const b = {
+      x: lm.x + 16, z: lm.z, w: def.w, d: def.d, h: def.h, color: def.color,
+      neon: def.neon, neonColor: def.neonColor || null, roof: false, landmark: def.key,
+    };
+    city.buildings.push(b);
+    city.landmarkBuildings[def.key] = b;
+  }
+
+  // Lamps at every intersection corner (one per corner, seeded subset).
+  for (let j = 0; j < ROAD_COUNT; j++) {
+    for (let i = 0; i < ROAD_COUNT; i++) {
+      if (rng() < 0.5) {
+        city.lamps.push({ x: roadLines[i] + 8.5, z: roadLines[j] + 8.5 });
+      }
+      if (rng() < 0.3) {
+        city.lamps.push({ x: roadLines[i] - 8.5, z: roadLines[j] - 8.5 });
+      }
     }
   }
 
-  // The beach: a sand strip and water along the south edge, with the pier.
-  const beach = { x0: 0, y0: WORLD_SIZE - 130, x1: WORLD_SIZE, y1: WORLD_SIZE };
-  // Boats bobbing in the marina water, south-west.
-  for (let i = 0; i < 7; i += 1) {
-    boats.push({
-      x: floatBetween(rng, 300, 1600),
-      y: WORLD_SIZE - 95 + floatBetween(rng, -8, 8),
-      angle: floatBetween(rng, -0.3, 0.3),
-      size: floatBetween(rng, 26, 44),
-      color: pick(rng, ['#f1c40f', '#ecf0f1', '#e74c3c', '#3498db']),
-      bob: floatBetween(rng, 0, Math.PI * 2),
-    });
+  // Parking spots along curbs (parallel, on the road edge).
+  for (let n = 0; n < 90; n++) {
+    const horizontal = rng() < 0.5;
+    const road = pick(rng, roadLines);
+    const along = rand(rng, 45, WORLD_SIZE - 45);
+    const side = rng() < 0.5 ? -1 : 1;
+    const x = horizontal ? along : road + side * (ROAD_WIDTH / 2 - 2.2);
+    const z = horizontal ? road + side * (ROAD_WIDTH / 2 - 2.2) : along;
+    const yaw = horizontal ? (side > 0 ? 0 : Math.PI) : (side > 0 ? Math.PI / 2 : -Math.PI / 2);
+    // Keep clear of intersections.
+    const nearRoad = nearestRoadCoord(horizontal ? x : z);
+    if (Math.abs((horizontal ? x : z) - nearRoad) < 16) continue;
+    city.parking.push({ x, z, yaw });
   }
-  // The pier: planks out into the water at the Marina Pier landmark.
-  const pier = { x: LANDMARKS.pier.x - 14, y: LANDMARKS.pier.y, w: 28, h: 220 };
-  // The lighthouse, on the sand at the south-west corner.
-  const lighthouse = { x: LANDMARKS.lighthouse.x, y: LANDMARKS.lighthouse.y };
-  // The Solmar Plaza fountain — a roundabout in the middle of the square —
-  // and beach umbrellas on the sand, clear of the pier.
-  const fountain = { x: LANDMARKS.plaza.x, y: LANDMARKS.plaza.y, r: 42 };
-  const umbrellas = [];
-  for (let i = 0; i < 8; i += 1) {
-    umbrellas.push({
-      x: floatBetween(rng, 800, 3400),
-      y: WORLD_SIZE - 100 + floatBetween(rng, -12, 12),
-      color: pick(rng, ['#e74c3c', '#f1c40f', '#3498db', '#e84393']),
-      tilt: floatBetween(rng, -0.4, 0.4),
+
+  // Sun coins: hidden around landmarks, parks and the pier.
+  const coinSpots = [
+    ...Object.values(LANDMARKS),
+    { x: 150, z: 150 }, { x: 330, z: 90 }, { x: 90, z: 390 }, { x: 390, z: 390 },
+    { x: 210, z: 450 }, { x: 450, z: 210 }, { x: 150, z: 330 }, { x: 330, z: 270 },
+  ];
+  for (let i = 0; i < COIN_COUNT; i++) {
+    const spot = coinSpots[i % coinSpots.length];
+    city.coins.push({
+      x: clamp(spot.x + rand(rng, -14, 14), 20, WORLD_SIZE - 20),
+      z: clamp(spot.z + rand(rng, -14, 14), 20, WORLD_SIZE - 20),
+      taken: false,
     });
   }
 
-  // Sun-coin spots: spread over the city, always on a sidewalk or park,
-  // never inside a building.
-  const coins = [];
-  let guard = 0;
-  while (coins.length < COIN_COUNT && guard < 400) {
-    guard += 1;
-    const x = floatBetween(rng, 250, 3350);
-    const y = floatBetween(rng, 250, 3350);
-    if (isOnRoad(x, y)) continue;
-    if (rectHitsBuildingRaw(buildings, x, y, 20, 20)) continue;
-    if (coins.some((c) => Math.hypot(c.x - x, c.y - y) < 300)) continue;
-    coins.push({ x, y, taken: false });
-  }
-
-  return { buildings, trees, lamps, parks, beach, boats, pier, lighthouse, fountain, umbrellas, coins, centers };
+  return city;
 }
 
-function makeBuilding(x, y, w, h, district, rng) {
-  const color = pick(rng, district.palette);
-  const downtown = district.name === 'Downtown';
-  const tower = downtown && rng() < 0.35;
+// ---- collision queries (2D, x/z plane) ----
+
+/** Push a circle (x, z, r) out of every building AABB it overlaps. Returns true if it hit anything. */
+export function collideCircleBuildings(city, x, z, r) {
+  let hit = false;
+  for (const b of city.buildings) {
+    const hw = b.w / 2;
+    const hd = b.d / 2;
+    const cx = clamp(x, b.x - hw, b.x + hw);
+    const cz = clamp(z, b.z - hd, b.z + hd);
+    const dx = x - cx;
+    const dz = z - cz;
+    const d2 = dx * dx + dz * dz;
+    if (d2 < r * r) {
+      hit = true;
+      if (d2 > 1e-6) {
+        const d = Math.sqrt(d2);
+        const push = (r - d) / d;
+        x += dx * push;
+        z += dz * push;
+      } else {
+        // Centre inside the box: push out along the shortest face.
+        const px = hw + r - Math.abs(x - b.x);
+        const pz = hd + r - Math.abs(z - b.z);
+        if (px < pz) x += (x >= b.x ? px : -px);
+        else z += (z >= b.z ? pz : -pz);
+      }
+    }
+  }
+  return { x, z, hit };
+}
+
+/** True when the segment (ax,az)-(bx,bz) crosses any building AABB (line of sight). */
+export function segmentBlocked(city, ax, az, bx, bz) {
+  for (const b of city.buildings) {
+    if (b.h < 6) continue;
+    const hw = b.w / 2;
+    const hd = b.d / 2;
+    const minX = b.x - hw;
+    const maxX = b.x + hw;
+    const minZ = b.z - hd;
+    const maxZ = b.z + hd;
+    // Slab test.
+    const dx = bx - ax;
+    const dz = bz - az;
+    let tmin = 0;
+    let tmax = 1;
+    if (Math.abs(dx) < 1e-9) {
+      if (ax < minX || ax > maxX) continue;
+    } else {
+      let t1 = (minX - ax) / dx;
+      let t2 = (maxX - ax) / dx;
+      if (t1 > t2) [t1, t2] = [t2, t1];
+      tmin = Math.max(tmin, t1);
+      tmax = Math.min(tmax, t2);
+      if (tmin > tmax) continue;
+    }
+    if (Math.abs(dz) < 1e-9) {
+      if (az < minZ || az > maxZ) continue;
+    } else {
+      let t1 = (minZ - az) / dz;
+      let t2 = (maxZ - az) / dz;
+      if (t1 > t2) [t1, t2] = [t2, t1];
+      tmin = Math.max(tmin, t1);
+      tmax = Math.min(tmax, t2);
+      if (tmin > tmax) continue;
+    }
+    return true;
+  }
+  return false;
+}
+
+/** Nearest lane to (x, z): returns {lane, t} (t = metres along the lane). */
+export function nearestLane(city, x, z) {
+  let best = null;
+  let bestD = Infinity;
+  for (let i = 0; i < city.lanes.length; i++) {
+    const L = city.lanes[i];
+    const dx = L.x1 - L.x0;
+    const dz = L.z1 - L.z0;
+    const len2 = dx * dx + dz * dz;
+    let t = ((x - L.x0) * dx + (z - L.z0) * dz) / len2;
+    t = clamp(t, 0, 1);
+    const px = L.x0 + dx * t;
+    const pz = L.z0 + dz * t;
+    const d = (x - px) * (x - px) + (z - pz) * (z - pz);
+    if (d < bestD) {
+      bestD = d;
+      best = { lane: i, t: t * L.len };
+    }
+  }
+  return best;
+}
+
+/** A point on a lane, offset to the right-hand side of travel. */
+export function lanePoint(city, laneIdx, t) {
+  const L = city.lanes[laneIdx];
+  const s = clamp(t / L.len, 0, 1);
+  const dx = (L.x1 - L.x0) / L.len;
+  const dz = (L.z1 - L.z0) / L.len;
+  // Right-hand offset: right of forward (dx, dz) is (-dz, dx) in (x, z)
+  // when facing (dx, dz)... check: facing +z, right is -x. (-dz, dx) = (-1, 0). Yes.
+  const rx = -dz;
+  const rz = dx;
   return {
-    x, y, w, h,
-    color,
-    roof: shade(color, -18),
-    side: shade(color, -42),
-    height: tower ? intBetween(rng, 6, 10) : intBetween(rng, 1, downtown ? 4 : 3),
-    windows: intBetween(rng, 2, 5),
-    district: district.name,
-    tower,
+    x: L.x0 + dx * s * L.len + rx * 3.5,
+    z: L.z0 + dz * s * L.len + rz * 3.5,
+    dirX: dx,
+    dirZ: dz,
   };
 }
 
-// Darken a #rrggbb colour by an amount (negative = darker).
-function shade(hex, amount) {
-  const n = parseInt(hex.slice(1), 16);
-  const r = Math.max(0, Math.min(255, (n >> 16) + amount));
-  const g = Math.max(0, Math.min(255, ((n >> 8) & 0xff) + amount));
-  const b = Math.max(0, Math.min(255, (n & 0xff) + amount));
-  return `rgb(${r},${g},${b})`;
-}
-
-function rectHitsBuildingRaw(buildings, x, y, hw, hh) {
-  for (const b of buildings) {
-    if (x - hw < b.x + b.w && x + hw > b.x && y - hh < b.y + b.h && y + hh > b.y) return b;
+/** GPS route: Manhattan path along road centre lines from (x, z) to (tx, tz). */
+export function gpsRoute(x, z, tx, tz) {
+  const pts = [{ x, z }];
+  const rx = nearestRoadCoord(x);
+  const rz = nearestRoadCoord(z);
+  const trx = nearestRoadCoord(tx);
+  const trz = nearestRoadCoord(tz);
+  pts.push({ x: rx, z });
+  pts.push({ x: rx, z: rz });
+  pts.push({ x: trx, z: rz });
+  pts.push({ x: trx, z: tz });
+  pts.push({ x: tx, z: tz });
+  // Drop zero-length legs.
+  const out = [pts[0]];
+  for (let i = 1; i < pts.length; i++) {
+    const p = pts[i];
+    const last = out[out.length - 1];
+    if (Math.abs(p.x - last.x) > 0.5 || Math.abs(p.z - last.z) > 0.5) out.push(p);
   }
-  return null;
+  return out;
 }
-
-// Circle (x, y, radius) vs building rectangles: push the circle out and
-// return the corrected position. Used for the player and pedestrians.
-export function collideCircleBuildings(city, x, y, radius) {
-  for (const b of city.buildings) {
-    const closestX = Math.max(b.x, Math.min(x, b.x + b.w));
-    const closestY = Math.max(b.y, Math.min(y, b.y + b.h));
-    const dx = x - closestX;
-    const dy = y - closestY;
-    const distSq = dx * dx + dy * dy;
-    if (distSq < radius * radius) {
-      if (distSq > 0.01) {
-        const dist = Math.sqrt(distSq);
-        x = closestX + (dx / dist) * radius;
-        y = closestY + (dy / dist) * radius;
-      } else {
-        // Centre inside the building: push out along the smallest overlap.
-        const pushLeft = x - b.x + radius;
-        const pushRight = b.x + b.w - x + radius;
-        const pushUp = y - b.y + radius;
-        const pushDown = b.y + b.h - y + radius;
-        const m = Math.min(pushLeft, pushRight, pushUp, pushDown);
-        if (m === pushLeft) x = b.x - radius;
-        else if (m === pushRight) x = b.x + b.w + radius;
-        else if (m === pushUp) y = b.y - radius;
-        else y = b.y + b.h + radius;
-      }
-    }
-  }
-  return { x, y };
-}
-
-// Axis-aligned rectangle (a car) vs buildings: returns true on overlap.
-export function rectHitsBuilding(city, x, y, hw, hh) {
-  return rectHitsBuildingRaw(city.buildings, x, y, hw, hh);
-}
-
-export { LANDMARKS };

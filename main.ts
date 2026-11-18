@@ -1,15 +1,18 @@
-// Solmar Bay: Heatwave — a make.fun gta6-01 entry, written for this
+// Solmar Bay 3D — a make.fun gta6-01 entry, written for this
 // competition by the recorded agent session: an original open-world crime
-// game (game/ is plain static files a desktop browser loads offline —
-// game/index.html and its ES modules, no library and no network request).
-// This program hands it in: it copies game/ and screenshots/ from beside
-// this file to /output and writes /output/dossier.json, the summary the
-// judge reads, with the vendored make.fun library.
+// game in full 3D (game/ is plain static files a desktop browser loads
+// offline — game/index.html and its ES modules, Three.js vendored under
+// game/vendor/, no other network request). This program hands it in: it
+// copies game/ and screenshots/ from beside this file to /output and
+// writes /output/dossier.json, the summary the judge reads, with the
+// vendored make.fun library.
 //
-// v2.1 polish pass: 10 story missions, money-van heists, rain and storms,
-// a fourth weapon (rifle) and radio station (Bay FM), the Aurora supercar
-// and smarter police — all in game/, so the dossier's text budget was
-// raised to 256 KiB to hold every source whole for the judge.
+// v3: full 3D rewrite — Three.js chase camera, arcade car physics with
+// drift, lane-graph traffic, 6-star wanted with helicopter, day/night
+// neon city, 10 story missions with Dante & Mara, money-van heists,
+// taxi/races/chop shop, safehouse/garage, radio on foot, saves. The
+// dossier's text budget stays 256 KiB to hold every source whole for
+// the judge (Three.js itself is vendored, so it is counted, not shown).
 //
 // Serve it locally with `node serve.ts`, then open http://localhost:8080.
 // Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
@@ -31,7 +34,7 @@ if (existsSync(join(here, 'screenshots'))) cpSync(join(here, 'screenshots'), joi
 // Fail fast at hand-in: a missing entrypoint or an oversized screenshot
 // would be refused by the scorer, so refuse it here with a clear error.
 if (!existsSync(join(out, 'game', 'index.html'))) throw new Error('hand-in is missing game/index.html');
-for (const shot of ['1-police-chase.jpg', '2-heli-night.jpg', '3-on-foot.jpg', '4-van-heist.jpg']) {
+for (const shot of ['1-police-chase.jpg', '2-heli-night.jpg', '3-on-foot.jpg', '4-golden-drive.jpg']) {
   const p = join(out, 'screenshots', shot);
   if (existsSync(p) && statSync(p).size > 262144) throw new Error(`screenshot ${shot} is over the 256 KiB cap`);
 }
