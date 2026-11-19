@@ -2,9 +2,9 @@
 [![rank](https://make.fun/badge/gta6-01/Freshaaaa/gta6-01-v3/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![reward](https://make.fun/badge/gta6-01/Freshaaaa/gta6-01-v3/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 
-# Solmar Bay 3D
+# Solmar Bay 3D — Crowded Streets v12
 
-A full-3D open-world crime game for the [Make GTA 6 bounty on make.fun](https://make.fun/bounty/gta6-01) — a Vice City-inspired bay rendered in Three.js, with a chase camera, arcade car physics, lane-graph traffic, a 6-star wanted system with a police helicopter, a day/night neon city, 10 story missions, side jobs, money-van heists, rain and storms, combat, a GTA-V style HUD with a rotating minimap and GPS, a phone with a social feed, a safehouse garage, and saving.
+A full-3D open-world crime game for the [Make GTA 6 bounty on make.fun](https://make.fun/bounty/gta6-01) — a Vice City-inspired bay rendered in Three.js, with a low third-person chase camera, arcade car physics, lane-graph traffic, a 6-star wanted system with a police helicopter, a golden-hour city, 10 story missions, side jobs, money-van heists, rain and storms, combat, and a dense GTA-style HUD: mission panel, police-response list, weapon slots, car condition, location label and a rotating minimap with GPS.
 
 You are Dante "D" Reyes, a wheelman fresh out of the Old Harbor docks — and Mara is your getaway-driver partner, riding shotgun, calling the turns, and keeping the cops off your bumper. Rosa at the diner, Vince Corso who runs the Sunset Hills crew, and the rival Saltwater crew that wants them both gone. Steal cars. Outrun the law. Take the Bay.
 
@@ -18,6 +18,14 @@ Serve `game/` with any static server — `node serve.ts` then open http://localh
 - **Mouse** — aim. **Click** — shoot. **F** — punch. **1–4** — switch weapon
 - **R / Q** — next / previous radio station (it keeps playing on foot, through the phone)
 - **C** — phone (social feed + contacts). **G** — garage menu. **P** — pause. **M** — mute
+
+## What's new in v12 (chase cam + dense HUD + golden hour)
+
+- **Low chase camera** — the driving camera now sits close behind and just above the player's car, looking forward down the road, so the car is large in frame and the street, traffic and police ahead are visible. The on-foot camera stays a close third-person view. The camera snaps onto the chase framing for staged screenshots instead of drifting in from the high title view.
+- **Golden-hour lighting** — the sky at dusk is warm orange-pink with long shadows; all four screenshot scenes are set at golden hour (17:15–17:45). Night and rain are still in the game as weather, just not what the screenshots lead with.
+- **Crowded streets** — screenshot scenes add traffic on the player's own road plus more pedestrians on the sidewalks, and the chase scenes run the pursuit simulation forward so the cruisers close in from their spawn and the helicopter is actually in frame against the sky.
+- **Dense HUD** — a mission panel (mission name, stage, giver + reward, next step, timer), a police-response list (named Solmar PD units with role — RAMMING / PURSUIT / FLANKING / SPOTLIGHT / RESPONDING — and distance in metres, plus AIR-1 when the helicopter is up), weapon slots with ammo and locked state, the car's name and condition % next to the speed, a location label (district + nearest landmark), a WANTED label over the stars, and a larger cash readout.
+- **Late-mission screenshots** — the four shots now show real mid/late-story moments instead of free roam and the first mission: Getaway Driver's timed checkpoints (m3), Turf War on foot at the Marina Pier (m4, 2/5 down), the Heatwave escape with 4 stars (m8), and the King of the Bay finale checkpoints with the helicopter up (m10) — with the money, weapons and heat a player would honestly have earned by that point in the story.
 
 ## What's in the city
 
@@ -39,8 +47,8 @@ Every line of the game is original code written for this competition — the cit
 
 - Plain ES modules, no bundler: `game/index.html` maps `three` to a pinned CDN (three@0.160.0) with an import map and loads `game/src/main.js`, which imports Three.js from `'three'`.
 - Fixed 60 Hz simulation, decoupled rendering; seeded city generation (`?seed=N` reproduces a city).
-- `?shot=start|drive|chase|foot|heli` stages a scene for screenshots and sets `window.__shotReady`; `window.__solmar` exposes the debug API the playtest drives.
-- `node serve.ts --port 8080` serves `game/` locally; `node main.ts` (or `MAKEFUN_OUTPUT_DIR=out node main.ts`) builds the hand-in in `/output` with `dossier.json`.
+- `?shot=start|drive|chase|foot|heli` stages a scene for screenshots and sets `window.__shotReady`; `window.__solmar` exposes the debug API the playtest drives. The chase/heli shots run the pursuit simulation forward with the player car frozen, so the cruisers and helicopter are in frame, then snap the camera onto the chase framing.
+- `node serve.ts --port 8080` serves `game/` locally; `node main.ts` (or `MAKEFUN_OUTPUT_DIR=out node main.ts`) builds the hand-in in `/output` with `dossier.json`. main.ts also gates the hand-in: all four screenshots must exist and be under 256 KiB, and the chase-cam / dense-HUD code must be present in the sources.
 
 ## License
 

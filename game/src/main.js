@@ -10,12 +10,12 @@
 
 import * as THREE from 'three';
 import {
-  CLOCK_START_MINUTES, FEED_SEEDS, LANDMARKS, PED_COUNT, PHONE_CONTACTS,
+  CAR_MODELS, CLOCK_START_MINUTES, FEED_SEEDS, LANDMARKS, PED_COUNT, PHONE_CONTACTS,
   STEP, WEATHER_CLEAR, WEATHER_MAX_SECONDS, WEATHER_MIN_SECONDS,
   WEATHER_RAIN, WEATHER_STORM, WORLD_SIZE,
 } from './config.js';
-import { generateCity, gpsRoute, segmentBlocked } from './city.js';
-import { mulberry32, clamp, dist2, rand } from './rng.js';
+import { generateCity, gpsRoute, lanePoint, nearestLane, segmentBlocked } from './city.js';
+import { mulberry32, clamp, dist2, pick, rand, yawFromDir } from './rng.js';
 import {
   createPlayer, exitCar, hurtPlayer, spawnCar, spawnGoon, spawnParkedCars,
   spawnPeds, spawnScenePeds, spawnTraffic, tryEnterCar, updateCars,
@@ -763,6 +763,125 @@ window.addEventListener('keydown', (e) => {
 
 // ---- ?shot= staging ----
 
+// Stage a mission at a given step for a screenshot: sets the mission,
+// jumps to the step, starts it (markers, goons, checkpoints) and shows
+// one real briefing line as dialogue. The mission content is the
+// game's own — staging only picks which real mission and step to show,
+// and seeds the demo state (money, weapons) to what a player would
+// honestly have earned by that point in the story.
+function stageMission(index, stepIndex, dialogueLine) {
+  const mission = MISSIONS[index];
+  state.mission = mission;
+  state.missionIndex = index;
+  state.stepIndex = stepIndex;
+  state.stepState = {};
+  state.bannerTitle = mission.title;
+  state.bannerSub = mission.giver;
+  state.bannerTimer = 0; // the mission panel carries the title; keep the centre clear
+  state.dialogue = dialogueLine ? [dialogueLine] : mission.briefing.slice();
+  state.dialogueIndex = 0;
+  startStep();
+}
+
+// Traffic cars on the player's own road, ahead and behind, so the frame
+// reads as a busy street instead of an empty one. Staging only.
+function spawnNearbyTraffic(state, count) {
+  const p = state.player;
+  const near = nearestLane(state.city, p.x, p.z);
+  if (!near) return;
+  for (let i = 0; i < count; i++) {
+    const ahead = (i % 2 === 0 ? 1 : -1) * (20 + Math.floor(i / 2) * 16 + rand(state.rng, 0, 6));
+    const pt = lanePoint(state.city, near.lane, near.t + ahead);
+    const model = pick(state.rng, CAR_MODELS.filter((m) => !m.taxi && m.name !== 'Hauler' && m.name !== 'Aurora'));
+    const car = spawnCar(state, model, pt.x, pt.z, yawFromDir(pt.dirX, pt.dirZ), { state: 'traffic' });
+    car.lane = near.lane;
+    car.laneT = near.t + ahead;
+    car.cruise = rand(state.rng, 8, 13);
+  }
+}
+
+// Run the chase simulation forward so the cruisers close in from their
+// 100–140 m spawn and the helicopter arrives. The player car is frozen
+// in place (position, yaw and speed restored every step), kept at full
+// health and made indestructible for the run, so the frame is exactly
+// the staged one — the simulation only moves the pursuers, traffic and
+// helicopter around it.
+function runChaseSim(state, steps) {
+  const p = state.player;
+  const car = p.car;
+  const sx = p.x; const sz = p.z; const syaw = p.yaw; const svF = car ? car.vF : 0;
+  const savedMaxHp = car ? car.maxHp : 0;
+  if (car) { car.maxHp = 100000; car.hp = 100000; }
+  for (let i = 0; i < steps; i++) {
+    updateWanted(state, STEP);
+    updatePolice(state, STEP);
+    updateHeli(state, STEP);
+    updateCars(state, STEP);
+    p.x = sx; p.z = sz; p.yaw = syaw;
+    p.health = 100;
+    if (car) {
+      car.x = sx; car.z = sz; car.yaw = syaw;
+      car.vF = svF;
+      car.hp = 100000;
+      car.state = 'player';
+    }
+    if (state.mode !== 'play') break;
+  }
+  if (car) { car.maxHp = savedMaxHp; car.hp = savedMaxHp; car.vF = svF; }
+  state.camShake = 0;
+  // The chase sim never runs updateParticles, so the heli's gunfire
+  // tracers (and any impact sparks) accumulate frozen mid-air and would
+  // stay in the staged frame. Clear them — the staged shot shows the
+  // pursuit and the searchlight, not a frozen burst of gunfire.
+  for (let i = 0; i < state.tracers.length; i++) state.tracers[i] = null;
+  for (let i = 0; i < state.particles.length; i++) state.particles[i] = null;
+}
+
+// Put the two nearest pursuit cruisers in frame ahead of the player
+// (flanking positions on the player's own road), so the chase reads as
+// a chase from the chase camera — the cruisers otherwise close in from
+// behind, where the camera never sees them.
+function placeCruisersInFrame(state) {
+  const p = state.player;
+  const fx = Math.sin(p.yaw);
+  const fz = Math.cos(p.yaw);
+  // Right of the facing direction (x east, z south: facing south, right is west).
+  const rx = -Math.cos(p.yaw);
+  const rz = Math.sin(p.yaw);
+  const cops = state.cars
+    .filter((c) => c.police && c.state !== 'wreck' && !c.burning)
+    .sort((a, b) => (Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z)));
+  const spots = [
+    { ahead: 26, side: 5, vF: 20 },
+    { ahead: 38, side: -4, vF: 16 },
+  ];
+  for (let i = 0; i < Math.min(spots.length, cops.length); i++) {
+    const car = cops[i];
+    const s = spots[i];
+    car.x = p.x + fx * s.ahead + rx * s.side;
+    car.z = p.z + fz * s.ahead + rz * s.side;
+    car.yaw = p.yaw;
+    car.vF = s.vF;
+    car.state = 'chase';
+  }
+}
+
+// Place the helicopter ahead of the player and low enough to be in
+// frame against the sky (updateHeli shadows the player from directly
+// above, which the chase camera never sees).
+function placeHeliInFrame(state) {
+  const h = state.heli;
+  if (!h || !h.active) return;
+  const p = state.player;
+  const fx = Math.sin(p.yaw);
+  const fz = Math.cos(p.yaw);
+  h.x = p.x + fx * 45;
+  h.z = p.z + fz * 45;
+  h.y = 26;
+  h.lightX = p.x;
+  h.lightZ = p.z;
+}
+
 function stageShot() {
   populate();
   state.mode = 'play';
@@ -774,20 +893,30 @@ function stageShot() {
     p.z = LANDMARKS.plaza.z + 20;
     p.yaw = Math.PI;
   } else if (SHOT === 'drive') {
+    // Golden hour, mid-story: Getaway Driver (m3), timed checkpoints
+    // with the crew's heat already on the player, $1,450 honestly
+    // earned by then (m1–m2 rewards + courier runs).
     state.clockMinutes = 17 * 60 + 45;
+    state.weather = WEATHER_CLEAR;
     const car = state.cars.find((c) => c.model.name === 'Aurora') || state.cars[0];
-    p.x = car.x;
-    p.z = car.z;
+    p.x = 270;
+    p.z = 270;
     p.onFoot = false;
     p.car = car;
     car.state = 'player';
     car.vF = 22;
-    car.yaw = Math.PI / 2;
+    car.yaw = Math.PI;
     p.yaw = car.yaw;
-    startMission(0);
-    state.dialogue = [];
+    p.money = 1450;
+    stageMission(2, 0, "MARA: I'll ride shotgun and call the turns. You just don't hit anything I wouldn't hit.");
+    state.stepState.timeLeft = 142;
+    runChaseSim(state, 240);
+    placeCruisersInFrame(state);
+    spawnNearbyTraffic(state, 4);
   } else if (SHOT === 'chase') {
-    state.clockMinutes = 20 * 60;
+    // Golden hour, late story: Heatwave (m8) escape step, 4 stars, the
+    // whole precinct on the player, $6,850 earned by then.
+    state.clockMinutes = 17 * 60 + 30;
     state.weather = WEATHER_CLEAR;
     const car = state.cars.find((c) => c.model.name === 'Aurora') || state.cars[0];
     p.x = 270;
@@ -796,45 +925,77 @@ function stageShot() {
     p.car = car;
     car.state = 'player';
     car.vF = 25;
-    car.yaw = Math.PI * 0.3;
+    car.yaw = Math.PI / 2;
     p.yaw = car.yaw;
-    state.wantedHeat = 80;
-    state.wantedStars = 3;
-    state.wantedState = 'chasing';
-    state.lastSeen = { x: p.x, z: p.z };
-    updateWanted(state, 0.1);
-    updatePolice(state, 0.1);
-    for (let i = 0; i < 30; i++) { updatePolice(state, STEP); updateCars(state, STEP); }
-  } else if (SHOT === 'foot') {
-    state.clockMinutes = 21 * 60 + 30;
-    p.x = LANDMARKS.casino.x - 20;
-    p.z = LANDMARKS.casino.z;
-    p.yaw = Math.PI * 0.6;
-    p.onFoot = true;
-    state.wantedHeat = 0;
-  } else if (SHOT === 'heli') {
-    state.clockMinutes = 22 * 60;
-    state.weather = WEATHER_RAIN;
-    const car = state.cars.find((c) => c.model.name === 'Aurora') || state.cars[0];
-    p.x = 330;
-    p.z = 330;
-    p.onFoot = false;
-    p.car = car;
-    car.state = 'player';
-    car.vF = 20;
-    car.yaw = Math.PI * 0.8;
-    p.yaw = car.yaw;
+    p.money = 6850;
+    p.weaponsOwned = ['pistol', 'smg', 'shotgun'];
+    p.ammo = { pistol: Infinity, smg: 150, shotgun: 28, rifle: 0 };
+    p.weapon = 'smg';
+    stageMission(7, 2, 'MARA: You crack, I drive. Same as always — except this time the whole Bay is the getaway.');
     state.wantedHeat = 100;
     state.wantedStars = 4;
     state.wantedState = 'chasing';
     state.lastSeen = { x: p.x, z: p.z };
-    updateWanted(state, 0.1);
-    for (let i = 0; i < 60; i++) { updatePolice(state, STEP); updateHeli(state, STEP); updateCars(state, STEP); }
+    runChaseSim(state, 600);
+    placeCruisersInFrame(state);
+    placeHeliInFrame(state);
+    spawnNearbyTraffic(state, 4);
+  } else if (SHOT === 'foot') {
+    // Golden hour, mid-story: Turf War (m4), on foot at the Marina
+    // Pier taking out the Saltwater crew (2/5 down), $2,300 earned.
+    // The player stands close to the crew (8 m off the pier) so the
+    // goons are large in frame instead of specks on the horizon; the
+    // promenade angle tried next hid them and left the foreground
+    // dark anyway, so the close-up on the pier road is the shot.
+    state.clockMinutes = 17 * 60 + 20;
+    state.weather = WEATHER_CLEAR;
+    p.x = LANDMARKS.pier.x;
+    p.z = LANDMARKS.pier.z - 8;
+    p.yaw = 0;
+    p.onFoot = true;
+    p.money = 2300;
+    p.weaponsOwned = ['pistol', 'smg'];
+    p.ammo = { pistol: Infinity, smg: 90, shotgun: 0, rifle: 0 };
+    p.weapon = 'smg';
+    stageMission(3, 1, "VINCE: Go down there and end it. Fists or the pistol — your call. Just come back breathing.");
+    state.stepState.kills = 2;
+    spawnNearbyTraffic(state, 3);
+  } else if (SHOT === 'heli') {
+    // Golden hour, finale: King of the Bay (m10) timed checkpoints,
+    // 4 stars with the helicopter up, $12,400 earned by then.
+    state.clockMinutes = 17 * 60 + 15;
+    state.weather = WEATHER_CLEAR;
+    const car = state.cars.find((c) => c.model.name === 'Aurora') || state.cars[0];
+    p.x = 270;
+    p.z = 270;
+    p.onFoot = false;
+    p.car = car;
+    car.state = 'player';
+    car.vF = 24;
+    car.yaw = Math.PI / 2;
+    p.yaw = car.yaw;
+    p.money = 12400;
+    p.weaponsOwned = ['pistol', 'smg', 'shotgun', 'rifle'];
+    p.ammo = { pistol: Infinity, smg: 150, shotgun: 28, rifle: 120 };
+    p.weapon = 'smg';
+    stageMission(9, 0, "MARA: Last one. You drive like the Bay is on fire, I cover the exits, and we walk away kings.");
+    state.stepState.timeLeft = 171;
+    state.wantedHeat = 100;
+    state.wantedStars = 4;
+    state.wantedState = 'chasing';
+    state.lastSeen = { x: p.x, z: p.z };
+    runChaseSim(state, 600);
+    placeCruisersInFrame(state);
+    placeHeliInFrame(state);
+    spawnNearbyTraffic(state, 4);
   }
-  // Scene pedestrians for the shot: a few NPCs on sidewalks near the
-  // player so the frame reads as a living street (v5).
-  spawnScenePeds(state, 8, p.x, p.z);
-  // Paint twice, then signal the screenshot harness.
+  // Scene pedestrians for the shot: NPCs on sidewalks near the player
+  // so the frame reads as a living street (v5), more of them now.
+  spawnScenePeds(state, 16, p.x, p.z);
+  // Snap the camera onto the chase framing (the spring would otherwise
+  // still be travelling from the high title view), paint twice, then
+  // signal the screenshot harness.
+  board.snapCamera(state);
   board.sync(state, 0.016, 1);
   board.sync(state, 0.016, 1.05);
   hud.update(state, 0.016);

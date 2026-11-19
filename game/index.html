@@ -13,7 +13,8 @@
   .panel { background: rgba(8, 10, 18, .55); border-radius: 6px; padding: 6px 10px; }
   /* top right: cash + wanted */
   #top-right { position: absolute; top: 14px; right: 16px; text-align: right; }
-  #cash { font-size: 26px; font-weight: 800; color: #7dff9a; }
+  #cash { font-size: 34px; font-weight: 800; color: #7dff9a; line-height: 1; }
+  #wanted-label { font-size: 12px; font-weight: 800; letter-spacing: 2px; color: #ff6b6b; margin-top: 4px; }
   #stars { font-size: 22px; letter-spacing: 2px; margin-top: 2px; }
   #stars.flashing { animation: starflash .5s steps(2) infinite; }
   @keyframes starflash { 50% { opacity: .35; } }
@@ -23,6 +24,26 @@
   #clock-line { font-size: 15px; margin-top: 2px; }
   #clock { font-weight: 700; }
   #weather { color: #cfe3ff; }
+  /* mission panel (top left, under the clock): mission name, stage,
+     objective, next step and timer — the first thing a player reads. */
+  #mission-panel { margin-top: 8px; max-width: 350px; }
+  #mission-panel .mp-title { font-size: 13px; font-weight: 800; letter-spacing: 1px; color: #ffd700; }
+  #mission-panel .mp-stage { font-size: 12px; color: #ffd700; margin-top: 2px; letter-spacing: 1px; font-weight: 700; }
+  #mission-panel .mp-obj { font-size: 14px; font-weight: 600; margin-top: 3px; line-height: 1.35; }
+  #mission-panel .mp-next { font-size: 12px; color: #aab4c4; margin-top: 2px; }
+  #mission-panel .mp-timer { font-size: 13px; font-weight: 700; color: #ff9a5c; margin-top: 2px; }
+  /* police response list (top left, under the mission panel): named
+     units, their role and distance, like a dispatch board. */
+  #police-panel { margin-top: 8px; max-width: 350px; }
+  #police-panel .pp-head { font-size: 12px; font-weight: 800; letter-spacing: 1px; color: #ff6b6b; }
+  #police-panel .pp-row { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; margin-top: 2px; }
+  #police-panel .pp-row .pp-name { font-weight: 700; }
+  #police-panel .pp-role { font-weight: 700; }
+  #police-panel .pp-role.ram { color: #ff6b6b; }
+  #police-panel .pp-role.pur { color: #ffb84d; }
+  #police-panel .pp-role.flk { color: #7fd4ff; }
+  #police-panel .pp-role.resp { color: #aab4c4; }
+  #police-panel .pp-dist { color: #dfe6ee; }
   /* top centre: objective + mission banner */
   #objective { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); font-size: 15px; font-weight: 600; max-width: 46vw; text-align: center; }
   #mission-banner { position: absolute; top: 22%; left: 50%; transform: translateX(-50%); text-align: center; opacity: 0; transition: opacity .4s; }
@@ -30,6 +51,9 @@
   #mission-banner-sub { font-size: 16px; color: #fff; }
   /* bottom left: minimap + health */
   #bottom-left { position: absolute; left: 16px; bottom: 16px; }
+  #location { margin-bottom: 8px; }
+  #location-name { font-size: 16px; font-weight: 800; letter-spacing: 1px; color: #ffd700; }
+  #location-sub { font-size: 12px; color: #dfe6ee; }
   #minimap { width: 190px; height: 190px; border-radius: 50%; border: 3px solid rgba(255,255,255,.35); box-shadow: 0 2px 12px rgba(0,0,0,.6); background: #10131c; }
   #health-wrap { margin-top: 8px; display: flex; align-items: center; gap: 8px; }
   #health-bar { width: 150px; height: 10px; background: rgba(0,0,0,.55); border-radius: 5px; overflow: hidden; }
@@ -37,8 +61,18 @@
   #health-num { font-size: 13px; font-weight: 700; }
   /* bottom right: speed + weapon */
   #bottom-right { position: absolute; right: 18px; bottom: 16px; text-align: right; }
+  #weapon-slots { display: flex; gap: 5px; justify-content: flex-end; margin-bottom: 8px; }
+  .wslot { width: 54px; background: rgba(8,10,18,.65); border: 1px solid rgba(255,255,255,.2); border-radius: 5px; padding: 4px 2px; text-align: center; }
+  .wslot.cur { border-color: #ffd700; }
+  .wslot.locked { opacity: .45; }
+  .wslot .ws-key { font-size: 10px; color: #aab4c4; }
+  .wslot .ws-name { font-size: 11px; font-weight: 700; }
+  .wslot .ws-ammo { font-size: 11px; color: #ffd700; font-weight: 700; }
   #speed { font-size: 52px; font-weight: 900; line-height: 1; }
   #speed-label { font-size: 13px; color: #dfe6ee; }
+  #car-cond { font-size: 12px; color: #dfe6ee; margin-top: 4px; }
+  #car-cond-bar { display: inline-block; width: 90px; height: 6px; background: rgba(0,0,0,.55); border-radius: 3px; overflow: hidden; vertical-align: middle; margin: 0 5px; }
+  #car-cond-fill { display: block; height: 100%; background: #2ecc71; }
   #weapon-line { margin-top: 6px; font-size: 14px; }
   #weapon { font-weight: 700; }
   #ammo { color: #ffd700; font-weight: 700; }
@@ -80,11 +114,23 @@
   <div id="wanted-flash"></div>
   <div id="top-right">
     <div id="cash">$0</div>
+    <div id="wanted-label" style="display:none">WANTED</div>
     <div id="stars" class="stars">☆☆☆☆☆☆</div>
   </div>
   <div id="top-left">
     <div id="radio" class="panel">♪ Coastal Groove</div>
     <div id="clock-line" class="panel"><span id="clock">17:30</span> · <span id="weather">☀️ Clear</span></div>
+    <div id="mission-panel" class="panel">
+      <div class="mp-title" id="mp-mission">FREE ROAM</div>
+      <div class="mp-stage" id="mp-stage"></div>
+      <div class="mp-obj" id="mp-obj">Visit the Hideout for work</div>
+      <div class="mp-next" id="mp-next"></div>
+      <div class="mp-timer" id="mp-timer"></div>
+    </div>
+    <div id="police-panel" class="panel" style="display:none">
+      <div class="pp-head" id="pp-head">🚨 POLICE RESPONSE</div>
+      <div id="pp-rows"></div>
+    </div>
   </div>
   <div id="objective" class="panel">Free roam — visit the Hideout for work</div>
   <div id="mission-banner">
@@ -92,12 +138,15 @@
     <div id="mission-banner-sub"></div>
   </div>
   <div id="bottom-left">
+    <div id="location"><div id="location-name"></div><div id="location-sub"></div></div>
     <canvas id="minimap" width="190" height="190"></canvas>
     <div id="health-wrap"><div id="health-bar"><div id="health-fill"></div></div><span id="health-num">100</span></div>
   </div>
   <div id="bottom-right">
+    <div id="weapon-slots"></div>
     <div id="speed"></div>
     <div id="speed-label">On foot</div>
+    <div id="car-cond">CONDITION <span id="car-cond-bar"><span id="car-cond-fill"></span></span><span id="car-cond-num"></span></div>
     <div id="weapon-line"><span id="weapon">Pistol</span> · <span id="ammo">∞</span></div>
   </div>
   <div id="toast"></div>

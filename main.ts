@@ -37,8 +37,28 @@ if (existsSync(join(here, 'screenshots'))) cpSync(join(here, 'screenshots'), joi
 if (!existsSync(join(out, 'game', 'index.html'))) throw new Error('hand-in is missing game/index.html');
 for (const shot of ['1-police-chase.jpg', '2-heli-night.jpg', '3-on-foot.jpg', '4-golden-drive.jpg']) {
   const p = join(out, 'screenshots', shot);
-  if (existsSync(p) && statSync(p).size > 262144) throw new Error(`screenshot ${shot} is over the 256 KiB cap`);
+  if (!existsSync(p)) throw new Error(`screenshot ${shot} is missing — retake the 4 staged shots before handing in`);
+  if (statSync(p).size > 262144) throw new Error(`screenshot ${shot} is over the 256 KiB cap`);
 }
+
+// v12 gates: the chase-cam + dense-HUD work must actually be in the
+// handed-in sources, or the entry is the old bird's-eye build again.
+import { readFileSync } from 'node:fs';
+function mustContain(rel, needle) {
+  const text = readFileSync(join(here, rel), 'utf8');
+  if (!text.includes(needle)) throw new Error(`hand-in is missing ${needle} in ${rel}`);
+}
+mustContain('game/src/render3d.js', 'snapCamera');
+mustContain('game/src/render3d.js', 'chaseTarget');
+mustContain('game/src/main.js', 'stageMission');
+mustContain('game/src/main.js', 'runChaseSim');
+mustContain('game/src/main.js', 'placeHeliInFrame');
+mustContain('game/index.html', 'mission-panel');
+mustContain('game/index.html', 'police-panel');
+mustContain('game/index.html', 'weapon-slots');
+mustContain('game/index.html', 'car-cond');
+mustContain('game/src/hud.js', 'pp-rows');
+mustContain('game/src/police.js', 'callsign');
 
 // The scorer's own caps (reference/gate.json): only text_max_bytes shapes the bytes; the others refuse an entry the
 // scorer would refuse (more than 4 screenshots or one over 256 KiB; more than 993 files in game/ or 48 MiB of game

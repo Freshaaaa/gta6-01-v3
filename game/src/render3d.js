@@ -1174,24 +1174,32 @@ export class Board {
     state.nightFactor = nightFactor;
     // Sun azimuth: east at dawn, west at dusk.
     const az = ((minutes - 360) / 720) * Math.PI; // 0 dawn, PI dusk
-    const sunDir = new THREE.Vector3(Math.cos(az), Math.max(0.08, sunElev), 0.35);
+    // Sun azimuth: east at dawn, west at dusk. The elevation floor keeps
+    // the sun high enough to still graze the streets at golden hour —
+    // below ~8° the ground goes black under a pure grazing light.
+    const sunDir = new THREE.Vector3(Math.cos(az), Math.max(0.15, sunElev), 0.35);
     sunDir.normalize();
     const px = state.player.x;
     const pz = state.player.z;
     this.sun.position.set(px + sunDir.x * 160, sunDir.y * 160 + 20, pz + sunDir.z * 160);
     this.sun.target.position.set(px, 0, pz);
     const lowSun = clamp(1 - Math.abs(sunElev) * 2.5, 0, 1);
-    const sunCol = new THREE.Color('#ffdcae').lerp(new THREE.Color('#ff8a4c'), lowSun * 0.7);
+    // Dusk weight: strong while the sun is low (golden hour, ~17:00-18:00)
+    // so the sky reads warm orange-pink instead of flat blue-grey — and so
+    // the hemisphere fill stays up at dusk, or the streets go black under
+    // a grazing sun (the ground only catches sunI * sin(elevation)).
+    const duskW = clamp(lowSun * (0.3 + 0.7 * dayFactor), 0, 1);
+    const sunCol = new THREE.Color('#ffdcae').lerp(new THREE.Color('#ff8a4c'), lowSun * 0.9);
     this.sun.color.copy(sunCol);
     let sunI = 2.6 * dayFactor + 0.12;
     if (state.lightning > 0) sunI += state.lightning * 3;
     this.sun.intensity = sunI;
-    this.hemi.intensity = 0.3 + 0.75 * dayFactor + (state.lightning > 0 ? state.lightning * 1.5 : 0);
+    this.hemi.intensity = 0.3 + 0.75 * dayFactor + 0.35 * duskW + (state.lightning > 0 ? state.lightning * 1.5 : 0);
     // Sky: day blue, dusk orange, night deep blue.
     const daySky = new THREE.Color('#87b5e0');
     const duskSky = new THREE.Color('#ff9a5c');
     const nightSky = new THREE.Color('#0b1026');
-    const sky = nightSky.clone().lerp(daySky, dayFactor).lerp(duskSky, lowSun * 0.55 * dayFactor);
+    const sky = nightSky.clone().lerp(daySky, dayFactor).lerp(duskSky, duskW);
     this.scene.background.copy(sky);
     this.scene.fog.color.copy(sky).lerp(new THREE.Color('#ffffff'), 0.08);
     // Windows glow at night; neon brightens at night.
@@ -1209,24 +1217,52 @@ export class Board {
     }
   }
 
+  // Where the chase camera wants to be: close behind and slightly
+  // above the player's car, looking forward down the road, so the car
+  // is large in frame and the street, traffic and police ahead are
+  // visible. Shared by the spring in updateCamera and by snapCamera,
+  // so staged screenshots start exactly on the chase framing instead
+  // of mid-spring from the high title-screen view.
+  chaseTarget(state) {
+    const player = state.player;
+    const inCar = !player.onFoot && player.car;
+    const speed = inCar ? Math.abs(player.car.vF || 0) : (player.speed || 0);
+    const yaw = player.yaw;
+    const fx = Math.sin(yaw);
+    const fz = Math.cos(yaw);
+    // Chase spring: distance grows with speed, camera trails behind.
+    const dist = inCar ? 7.5 + 0.05 * speed : 6.5;
+    const height = inCar ? 3.1 : 2.8;
+    const lookAhead = inCar ? 6 + 0.25 * speed : 3;
+    const tx = player.x;
+    const tz = player.z;
+    return {
+      x: tx - fx * dist, y: height, z: tz - fz * dist,
+      lookX: tx + fx * lookAhead, lookY: 1.4, lookZ: tz + fz * lookAhead,
+    };
+  }
+
+  // Put the camera exactly on the chase framing at once (staged
+  // screenshots call this after staging; the spring would otherwise
+  // need ~2 s of frames to converge from the title view).
+  snapCamera(state) {
+    const t = this.chaseTarget(state);
+    this.camPos.set(t.x, t.y, t.z);
+    this.camLook.set(t.lookX, t.lookY, t.lookZ);
+    this.camera.position.set(t.x, t.y, t.z);
+    this.camera.lookAt(t.lookX, t.lookY, t.lookZ);
+  }
+
   updateCamera(state, dt) {
     const player = state.player;
     const inCar = !player.onFoot && player.car;
     const speed = inCar ? Math.abs(player.car.vF || 0) : (player.speed || 0);
     const maxSpeed = inCar ? 42 * player.car.model.maxSpeed : 6;
     const speedRatio = clamp(speed / maxSpeed, 0, 1);
-    const yaw = player.yaw;
-    const fx = Math.sin(yaw);
-    const fz = Math.cos(yaw);
-    // Chase spring: distance grows with speed, camera trails behind.
-    const dist = inCar ? 9 + 0.06 * speed : 6.5;
-    const height = inCar ? 3.6 : 2.8;
-    const lookAhead = inCar ? 6 + 0.25 * speed : 3;
-    const tx = player.x;
-    const tz = player.z;
-    const desiredX = tx - fx * dist;
-    const desiredZ = tz - fz * dist;
-    const desiredY = height;
+    const t = this.chaseTarget(state);
+    const desiredX = t.x;
+    const desiredZ = t.z;
+    const desiredY = t.y;
     const stiff = inCar ? 3.4 : 5;
     const k = 1 - Math.exp(-stiff * dt);
     this.camPos.x += (desiredX - this.camPos.x) * k;
@@ -1253,11 +1289,11 @@ export class Board {
         }
       }
     }
-    const lookX = tx + fx * lookAhead;
-    const lookZ = tz + fz * lookAhead;
+    const lookX = t.lookX;
+    const lookZ = t.lookZ;
     const lk = 1 - Math.exp(-8 * dt);
     this.camLook.x += (lookX - this.camLook.x) * lk;
-    this.camLook.y += (1.4 - this.camLook.y) * lk;
+    this.camLook.y += (t.lookY - this.camLook.y) * lk;
     this.camLook.z += (lookZ - this.camLook.z) * lk;
     // Screen shake.
     this.shake = Math.max(0, (state.camShake || 0) - dt * 2.2);
@@ -1273,9 +1309,9 @@ export class Board {
       this.camera.fov = this.camFov;
       this.camera.updateProjectionMatrix();
     }
-    // Expose for the HUD / debug hooks.
+    // Expose for the HUD / debug hooks (chase distance = camera behind the player).
     state.cameraFov = this.camFov;
-    state.cameraZoom = dist;
+    state.cameraZoom = Math.hypot(t.x - player.x, t.z - player.z);
   }
 
   drawMinimap(state) {

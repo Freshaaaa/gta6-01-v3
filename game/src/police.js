@@ -20,6 +20,18 @@ function policeCountFor(stars) {
   return [0, 1, 2, 3, 4, 5, 5][stars] || 0;
 }
 
+// Solmar PD unit callsigns (invented for this game, one per cruiser,
+// assigned in spawn order so the HUD's police-response list can name
+// each unit — "GULL-2 · RAMMING · 24 m" — the way a real dispatch board
+// does. Numbers keep rising through the session; names never repeat in
+// one chase because the pool is longer than the max 5 cruisers.
+const CALLSIGN_WORDS = ['GULL', 'TIDE', 'REEF', 'PIER', 'DOCK', 'PALM', 'BAY', 'HARBOR', 'STRIP', 'SURF'];
+
+function nextCallsign(state) {
+  const n = (state.policeCallIdx = (state.policeCallIdx || 0) + 1);
+  return `${CALLSIGN_WORDS[(n - 1) % CALLSIGN_WORDS.length]}-${n}`;
+}
+
 function spawnPoliceCar(state) {
   const p = state.player;
   // On a street 100–140 m away, in a random direction, never on top.
@@ -35,6 +47,7 @@ function spawnPoliceCar(state) {
     car.lane = near.lane;
     car.laneT = near.t;
     car.cruise = 30;
+    car.callsign = nextCallsign(state);
     return car;
   }
   return null;
