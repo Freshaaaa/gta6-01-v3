@@ -159,6 +159,7 @@ export function generateCity(seed) {
     { key: 'casino', w: 26, d: 16, h: 22, color: '#8e6fb8', neon: true, neonColor: '#00cec9' },
     { key: 'cityhall', w: 20, d: 14, h: 20, color: '#7d8aa0', neon: false },
     { key: 'stadium', w: 30, d: 22, h: 14, color: '#c98f7a', neon: true, neonColor: '#f1c40f' },
+    { key: 'tuner', w: 20, d: 12, h: 10, color: '#e67e22', neon: true, neonColor: '#f1c40f' },
   ];
   for (const def of landmarkDefs) {
     const lm = LANDMARKS[def.key];

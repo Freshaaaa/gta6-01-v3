@@ -11,8 +11,10 @@
 import {
   ARMOUR_AMOUNT, ARMOUR_PRICE, CHOP_MODELS, CHOP_REWARD, GARAGE_ARMOR_PRICE, GARAGE_ENGINE_PRICE,
   GARAGE_MAX_CARS, GARAGE_PAINT_PRICE, LANDMARKS, OUTFIT_PRICE, PAINT_COLORS, PLAYER_MAX_ARMOUR,
-  RESPRAY_PRICE, VAN_CRACK_SECONDS, VAN_FIRST_DELAY, VAN_HEAT, VAN_MAX_DELAY,
+  RESPRAY_PRICE, TUNE_MAX, TUNING_ARMOR_PRICE, TUNING_ENGINE_PRICE, TUNING_PAINT_PRICE,
+  TUNING_WHEELS_PRICE, VAN_CRACK_SECONDS, VAN_FIRST_DELAY, VAN_HEAT, VAN_MAX_DELAY,
   VAN_MIN_DELAY, VAN_REWARD, WEAPON_ORDER, WEAPON_UNLOCK_MISSION, WEAPONS,
+  applyTune, tuneLevel,
 } from './config.js';
 import { addWantedHeat, spawnCar } from './entities.js';
 import { dist2, pick, rand } from './rng.js';
@@ -358,9 +360,11 @@ export function storeCarInGarage(state) {
     state.toastTimer = 2.5;
     return false;
   }
+  const t = p.car.tune || { engine: 0, armor: 0, wheels: 0 };
   state.garage.push({
     model: p.car.model.name, color: p.car.color, hp: p.car.hp,
-    engine: p.car.engine || 0, armor: p.car.armor || 0,
+    engine: t.engine || p.car.engine || 0, armor: t.armor || p.car.armor || 0,
+    wheels: t.wheels || 0,
   });
   p.car.removed = true;
   state.cars = state.cars.filter((c) => c !== p.car);
@@ -379,10 +383,12 @@ export function takeOutGarageCar(state, idx) {
   const h = LANDMARKS.hideout;
   const car = spawnCar(state, spec.model, h.x + 6, h.z + 6, Math.PI / 2, { state: 'player', color: spec.color });
   car.hp = spec.hp;
-  car.engine = spec.engine || 0;
-  car.armor = spec.armor || 0;
-  car.model = { ...car.model, maxSpeed: car.model.maxSpeed * (1 + car.engine * 0.08), accel: car.model.accel * (1 + car.engine * 0.05) };
-  car.maxHp = car.model.hp + car.armor * 60;
+  // The stored tune is real: engine/armour/wheels recompute the car's
+  // stats through applyTune, so a tuned car taken out drives tuned.
+  car.tune = { engine: spec.engine || 0, armor: spec.armor || 0, wheels: spec.wheels || 0 };
+  car.engine = car.tune.engine;
+  car.armor = car.tune.armor;
+  applyTune(car);
   car.hp = Math.min(spec.hp, car.maxHp);
   state.garage.splice(idx, 1);
   p.onFoot = false;
@@ -408,11 +414,75 @@ export function upgradeGarageCar(state, idx, kind) {
     p.money -= GARAGE_ARMOR_PRICE;
     spec.armor++;
     state.toast = `Armor upgraded (level ${spec.armor}).`;
+  } else if (kind === 'wheels') {
+    if ((spec.wheels || 0) >= 2) { state.toast = 'Wheels are maxed.'; state.toastTimer = 2; return false; }
+    if (p.money < TUNING_WHEELS_PRICE) { state.toast = `Wheels cost $${TUNING_WHEELS_PRICE}.`; state.toastTimer = 2; return false; }
+    p.money -= TUNING_WHEELS_PRICE;
+    spec.wheels = (spec.wheels || 0) + 1;
+    state.toast = `Wheels upgraded (level ${spec.wheels}).`;
   } else if (kind === 'paint') {
     if (p.money < GARAGE_PAINT_PRICE) { state.toast = `A repaint costs $${GARAGE_PAINT_PRICE}.`; state.toastTimer = 2; return false; }
     p.money -= GARAGE_PAINT_PRICE;
     spec.color = pick(state.rng, PAINT_COLORS);
     state.toast = 'Repainted.';
+  }
+  state.toastTimer = 2.5;
+  sfxCash();
+  return true;
+}
+
+// ---- tuning garage (v14): upgrades for the CURRENT car ----
+// Lio's Tuning Garage is a real shop, not a label: each purchase spends
+// real money and really changes the car. Engine raises top speed and
+// acceleration, armour raises max HP, wheels sharpen the turn, paint
+// resprays the car (and rebuilds its mesh, like the respray shop).
+// The HUD's TUNE level is the sum of the three upgrade levels (0–6).
+
+export function tryTune(state, kind) {
+  const p = state.player;
+  const car = p.car;
+  if (!car || p.onFoot) {
+    state.toast = 'You need to be in a car to tune it.';
+    state.toastTimer = 2;
+    return false;
+  }
+  if (!car.tune) car.tune = { engine: car.engine || 0, armor: car.armor || 0, wheels: 0 };
+  const t = car.tune;
+  if (kind === 'engine') {
+    if (t.engine >= TUNE_MAX) { state.toast = 'Engine is maxed (level 2).'; state.toastTimer = 2; return false; }
+    if (p.money < TUNING_ENGINE_PRICE) { state.toast = `Engine upgrade costs $${TUNING_ENGINE_PRICE} — you have $${p.money}.`; state.toastTimer = 2; return false; }
+    p.money -= TUNING_ENGINE_PRICE;
+    t.engine++;
+    car.engine = t.engine;
+    applyTune(car);
+    state.toast = `Engine tuned to level ${t.engine} — top speed up! (TUNE ${tuneLevel(car)})`;
+  } else if (kind === 'armor') {
+    if (t.armor >= TUNE_MAX) { state.toast = 'Armour plating is maxed (level 2).'; state.toastTimer = 2; return false; }
+    if (p.money < TUNING_ARMOR_PRICE) { state.toast = `Armour plating costs $${TUNING_ARMOR_PRICE} — you have $${p.money}.`; state.toastTimer = 2; return false; }
+    p.money -= TUNING_ARMOR_PRICE;
+    t.armor++;
+    car.armor = t.armor;
+    applyTune(car);
+    state.toast = `Armour plating level ${t.armor} — max HP ${car.maxHp}. (TUNE ${tuneLevel(car)})`;
+  } else if (kind === 'wheels') {
+    if (t.wheels >= TUNE_MAX) { state.toast = 'Wheels are maxed (level 2).'; state.toastTimer = 2; return false; }
+    if (p.money < TUNING_WHEELS_PRICE) { state.toast = `Wheels cost $${TUNING_WHEELS_PRICE} — you have $${p.money}.`; state.toastTimer = 2; return false; }
+    p.money -= TUNING_WHEELS_PRICE;
+    t.wheels++;
+    applyTune(car);
+    state.toast = `Racing wheels level ${t.wheels} — sharper turn. (TUNE ${tuneLevel(car)})`;
+  } else if (kind === 'paint') {
+    if (p.money < TUNING_PAINT_PRICE) { state.toast = `A respray costs $${TUNING_PAINT_PRICE} — you have $${p.money}.`; state.toastTimer = 2; return false; }
+    p.money -= TUNING_PAINT_PRICE;
+    car.color = pick(state.rng, PAINT_COLORS);
+    if (state.board) {
+      const old = car.model;
+      car.model = { ...old, color: car.color };
+      state.board.removeCarMesh(car);
+    }
+    state.toast = 'Fresh paint — the car looks brand new.';
+  } else {
+    return false;
   }
   state.toastTimer = 2.5;
   sfxCash();

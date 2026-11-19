@@ -6,7 +6,7 @@
 // prompts, toasts, dialogue boxes, the phone, the garage menu and the
 // title / pause / wasted / busted screens.
 
-import { CREW, DISTRICTS, LANDMARKS, WEAPON_ORDER, WEAPONS, crewUnlocked, rankFor } from './config.js';
+import { CREW, DISTRICTS, LANDMARKS, TUNING_ARMOR_PRICE, TUNING_ENGINE_PRICE, TUNING_PAINT_PRICE, TUNING_WHEELS_PRICE, WEAPON_ORDER, WEAPONS, crewUnlocked, rankFor, tuneLevel } from './config.js';
 import { objectiveText } from './missions.js';
 import { stationDj, stationName, trackName } from './audio.js';
 
@@ -65,6 +65,8 @@ export class Hud {
       'rank-panel', 'rank-name', 'rank-bar-fill', 'rank-rp', 'rank-day',
       'in-sight', 'armour-fill', 'armour-num', 'mp-stage-bar',
       'crew-cards', 'dialogue-portrait',
+      // v14: tuning garage menu.
+      'tuning', 'tuning-list',
     ];
     for (const id of ids) this.el[id] = doc.getElementById(id);
     this.last = {};
@@ -233,21 +235,30 @@ export class Hud {
     }
     this.set('location-name', district.name.toUpperCase());
     this.set('location-sub', nearD < 90 ? `near ${nearName}` : 'Solmar Bay');
-    // Speed.
+    // Speed. The label names the vehicle — and for a car, its tune
+    // level (v14): "Aurora · TUNE 2", the way the top entries show it.
+    // A boat reads "Dinghy · BOAT · km/h".
     if (!p.onFoot && p.car) {
       const kmh = Math.round(Math.abs(p.car.vF) * 3.6);
       this.set('speed', String(kmh));
-      this.set('speed-label', `${p.car.model.name} · km/h`);
+      const tune = tuneLevel(p.car);
+      this.set('speed-label', tune > 0 ? `${p.car.model.name} · TUNE ${tune} · km/h` : `${p.car.model.name} · km/h`);
+    } else if (!p.onFoot && p.boat) {
+      const kmh = Math.round(Math.abs(p.boat.vF) * 3.6);
+      this.set('speed', String(kmh));
+      this.set('speed-label', `${p.boat.model.name} · BOAT · km/h`);
     } else {
       this.set('speed', '');
       this.set('speed-label', p.onFoot ? 'On foot' : '');
     }
-    // Car condition (bottom right, under the speed): the current car's
-    // health as a percentage with a bar, like the top entries show.
+    // Car condition (bottom right, under the speed): the current
+    // vehicle's health as a percentage with a bar, like the top
+    // entries show. Boats (v14) show the same bar.
     const carCondEl = this.el['car-cond'];
-    if (!p.onFoot && p.car) {
+    const veh = !p.onFoot ? (p.car || p.boat) : null;
+    if (veh) {
       this.show(carCondEl, true);
-      const pct = Math.max(0, Math.round((p.car.hp / p.car.maxHp) * 100));
+      const pct = Math.max(0, Math.round((veh.hp / veh.maxHp) * 100));
       this.set('car-cond-num', `${pct}%`);
       const fill = this.el['car-cond-fill'];
       if (fill) {
@@ -370,15 +381,45 @@ export class Hud {
     const list = this.el['garage-list'];
     if (!list) return;
     const rows = [];
-    rows.push('<div class="garage-row garage-head"><span>Car</span><span>Engine</span><span>Armor</span><span></span></div>');
+    rows.push('<div class="garage-row garage-head"><span>Car</span><span>Engine</span><span>Armor</span><span>Wheels</span><span></span></div>');
     state.garage.forEach((car, i) => {
       rows.push(
         `<div class="garage-row"><span style="color:${car.color}">■ ${car.model}</span>` +
-        `<span>Eng ${car.engine || 0}/2</span><span>Arm ${car.armor || 0}/2</span>` +
+        `<span>Eng ${car.engine || 0}/2</span><span>Arm ${car.armor || 0}/2</span><span>Whl ${car.wheels || 0}/2</span>` +
         `<span>[${i + 1}] take out</span></div>`,
       );
     });
-    rows.push('<div class="garage-hint">0 store current car · 1–3 take out · 4 engine $400 · 5 armor $300 · 6 paint $150 · G close</div>');
+    rows.push('<div class="garage-hint">0 store current car · 1–3 take out · 4 engine $400 · 5 armor $300 · 6 paint $150 · 7 wheels $200 · G close</div>');
+    const html = rows.join('');
+    if (list.innerHTML !== html) list.innerHTML = html;
+  }
+
+  // Tuning garage (v14): the current car, its tune levels and the
+  // prices — the menu the player opens at Lio's garage (E in a car
+  // there). Every row is a real purchase: the money leaves and the
+  // car's stats change.
+  renderTuning(state) {
+    const t = this.el.tuning;
+    if (!t) return;
+    this.show(t, !!state.tuningOpen);
+    if (!state.tuningOpen) return;
+    const list = this.el['tuning-list'];
+    if (!list) return;
+    const p = state.player;
+    const car = p.car;
+    const tune = car ? (car.tune || { engine: car.engine || 0, armor: car.armor || 0, wheels: 0 }) : { engine: 0, armor: 0, wheels: 0 };
+    const lvl = car ? tuneLevel(car) : 0;
+    const rows = [];
+    rows.push(`<div class="tuning-car">${car ? `${car.model.name} · TUNE ${lvl}` : 'No car'} · $${Math.floor(p.money).toLocaleString('en-US')}</div>`);
+    const row = (key, name, level, price, effect) => {
+      const maxed = level >= 2;
+      return `<div class="tuning-row${maxed ? ' maxed' : ''}"><span>[${key}] ${name}</span><span>${level}/2</span><span>${maxed ? 'MAXED' : `$${price}`}</span><span class="tuning-effect">${effect}</span></div>`;
+    };
+    rows.push(row(1, 'Engine', tune.engine || 0, TUNING_ENGINE_PRICE, '+8% top speed, +5% accel / level'));
+    rows.push(row(2, 'Armour plating', tune.armor || 0, TUNING_ARMOR_PRICE, '+60 max HP / level'));
+    rows.push(row(3, 'Racing wheels', tune.wheels || 0, TUNING_WHEELS_PRICE, '+5% turn / level'));
+    rows.push(row(4, 'Respray', 0, TUNING_PAINT_PRICE, 'fresh paint'));
+    rows.push('<div class="garage-hint">1 engine · 2 armour · 3 wheels · 4 paint · G close</div>');
     const html = rows.join('');
     if (list.innerHTML !== html) list.innerHTML = html;
   }

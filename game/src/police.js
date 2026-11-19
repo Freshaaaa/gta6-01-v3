@@ -10,7 +10,7 @@
 // shadows from above, and opens fire in bursts at 4 stars and up. Foot
 // cops get out and arrest a slow player on foot.
 
-import { HELI_MIN_STARS, WANTED_MAX } from './config.js';
+import { HELI_MIN_STARS, SHORE_Z, WANTED_MAX } from './config.js';
 import { clamp, dist2, lerpAngle, pick, rand, randInt, yawFromDir } from './rng.js';
 import { lanePoint, nearestLane, segmentBlocked } from './city.js';
 import { spawnCar, spawnGoon, addWantedHeat, hurtPlayer, addTracer } from './entities.js';
@@ -176,12 +176,20 @@ export function updateWanted(state, dt) {
 
 export function updatePolice(state, dt) {
   const p = state.player;
-  const pSpeed = p.onFoot ? (p.speed || 0) : Math.abs(p.car ? p.car.vF : 0);
+  // The vehicle the player is driving (car or boat) — the pursuit
+  // reads speed and heading from it, so a boat chase works too.
+  const veh = !p.onFoot ? (p.car || p.boat) : null;
+  const pSpeed = p.onFoot ? (p.speed || 0) : Math.abs(veh ? veh.vF : 0);
   // While the player is escaping, the cops search the last-seen spot —
   // they do not magically know where the player is.
   const searching = state.wantedState === 'escaping' && state.lastSeen;
-  const tpX = searching ? state.lastSeen.x : p.x;
-  const tpZ = searching ? state.lastSeen.z : p.z;
+  let tpX = searching ? state.lastSeen.x : p.x;
+  let tpZ = searching ? state.lastSeen.z : p.z;
+  // The shore (v14): cruisers cannot follow a boat onto the water, so
+  // when the player is afloat the ground cops hold the shoreline and
+  // watch — the boat is the escape. (The helicopter still follows.)
+  const onWater = !p.onFoot && !!p.boat;
+  if (onWater && !searching) tpZ = Math.min(tpZ, SHORE_Z);
   for (const car of state.cars) {
     if (!car.police || car.state === 'wreck' || car.state === 'burning') continue;
     const dx = tpX - car.x;
@@ -204,8 +212,8 @@ export function updatePolice(state, dt) {
       continue;
     }
     // Interception: aim where the target will be (no lead while searching).
-    const pvx = searching ? 0 : (p.onFoot ? Math.sin(p.yaw) * pSpeed : Math.sin(p.car.yaw) * p.car.vF);
-    const pvz = searching ? 0 : (p.onFoot ? Math.cos(p.yaw) * pSpeed : Math.cos(p.car.yaw) * p.car.vF);
+    const pvx = searching ? 0 : (p.onFoot ? Math.sin(p.yaw) * pSpeed : Math.sin(veh.yaw) * veh.vF);
+    const pvz = searching ? 0 : (p.onFoot ? Math.cos(p.yaw) * pSpeed : Math.cos(veh.yaw) * veh.vF);
     const leadT = Math.min(1.2, gap / (Math.abs(car.vF) + pSpeed + 1));
     const tx = tpX + pvx * leadT;
     const tz = tpZ + pvz * leadT;

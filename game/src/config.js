@@ -10,6 +10,13 @@ export const ROAD_FIRST = 30;            // centre line of the first road
 export const ROAD_COUNT = 9;             // roads at 30, 90, ... 510
 export const LANE_OFFSET = 3.5;          // lane centre offset from road centre
 
+// The sea: a 14 m strip along the south edge (sand z 512–526, water
+// z 526–540 in the ground texture). Boats live and drive in the water
+// band below; the shore line is the boundary cars and cops cannot cross.
+export const WATER_Z_MIN = 527;
+export const WATER_Z_MAX = 539;
+export const SHORE_Z = 525;
+
 export const STEP = 1 / 60;              // fixed simulation step (seconds)
 export const SAVE_KEY = 'solmarbay3d.save.v1';
 
@@ -68,6 +75,15 @@ export const LANDMARKS = {
   cityhall:  { name: 'Solmar City Hall', x: 210, z: 150, label: 'CITY HALL' },
   lighthouse:{ name: 'The Lighthouse', x: 30, z: 510, label: 'LIGHTHOUSE' },
   stadium:   { name: 'Solmar Stadium', x: 450, z: 150, label: 'STADIUM' },
+  tuner:     { name: "Lio's Tuning Garage", x: 150, z: 450, label: 'TUNER' },
+};
+
+// Boat docks: where the drivable boats are moored (on the water, off
+// the south shore). The Dinghy is the workhorse at the Marina Pier;
+// the Speedboat is moored by the Lighthouse.
+export const BOAT_DOCKS = {
+  pier:      { x: 90, z: 531, model: 'Dinghy' },
+  lighthouse:{ x: 30, z: 531, model: 'Speedboat' },
 };
 
 // Traffic car models (all invented for this game). accel/maxSpeed/turn are
@@ -95,6 +111,19 @@ export const CAR_MODELS = [
 // The chop shop only pays for fast cars.
 export const CHOP_MODELS = ['Strada', 'Viento', 'Falco', 'Vela', 'Aurora'];
 export const CHOP_REWARD = 600;
+
+// Boat models (v14): drivable on the south sea strip. accel/maxSpeed/
+// turn are the same multipliers stepCar uses for cars, so a boat's
+// handling is honest physics, not a special case. The Dinghy is the
+// slow workhorse moored at the Marina Pier; the Speedboat is the fast
+// one by the Lighthouse.
+export const BOAT_MODELS = [
+  { name: 'Dinghy',    color: '#ecf0f1', accel: 0.9,  maxSpeed: 0.72, turn: 0.8,  hp: 140, len: 4.6, wid: 2.0, boat: true },
+  { name: 'Speedboat', color: '#ff2e63', accel: 1.3,  maxSpeed: 1.15, turn: 1.0,  hp: 110, len: 5.2, wid: 2.1, boat: true },
+];
+export function boatModel(name) {
+  return BOAT_MODELS.find((m) => m.name === name) || BOAT_MODELS[0];
+}
 
 // Weather: clear, rain and storm cycle on a timer (main.js rolls the
 // change). Rain makes the roads slick — longer braking, easier drift —
@@ -174,7 +203,7 @@ export function crewUnlocked(missionIndex, storyDone) {
 }
 // Mission count is defined in missions.js; the crew helper needs it
 // without a circular import, so it lives here as a plain number.
-export const MISSIONS_COUNT = 10;
+export const MISSIONS_COUNT = 15;
 
 // Body armour (v13): absorbs damage before health does. Bought at the
 // Hideout shop; the HUD shows the armour bar next to health.
@@ -221,6 +250,38 @@ export const GARAGE_ENGINE_PRICE = 400;
 export const GARAGE_ARMOR_PRICE = 300;
 export const GARAGE_PAINT_PRICE = 150;
 export const PAINT_COLORS = ['#e84393', '#ff2e63', '#f1c40f', '#1abc9c', '#2980b9', '#9b59b6', '#ecf0f1', '#2c3e50', '#e67e22', '#16a085'];
+
+// Vehicle tuning (v14): the tuning garage upgrades the player's
+// CURRENT car (the garage menu upgrades stored cars). Each category
+// caps at level 2; the tune level shown in the HUD is the sum of the
+// three, so a fully tuned car reads TUNE 6.
+export const TUNE_MAX = 2;
+export const TUNING_ENGINE_PRICE = 400;
+export const TUNING_ARMOR_PRICE = 300;
+export const TUNING_WHEELS_PRICE = 200;
+export const TUNING_PAINT_PRICE = 150;
+/** Total tune level of a car: engine + armour + wheels (0–6). */
+export function tuneLevel(car) {
+  const t = car && car.tune;
+  if (!t) return (car && car.engine ? car.engine : 0) + (car && car.armor ? car.armor : 0);
+  return (t.engine || 0) + (t.armor || 0) + (t.wheels || 0);
+}
+/** Recompute a car's stats from its base model and its tune. The base
+ * model is kept on car.baseModel so repeated tuning never compounds. */
+export function applyTune(car) {
+  const base = car.baseModel || car.model;
+  car.baseModel = base;
+  const t = car.tune || { engine: 0, armor: 0, wheels: 0 };
+  car.tune = t;
+  car.model = {
+    ...base,
+    maxSpeed: base.maxSpeed * (1 + (t.engine || 0) * 0.08),
+    accel: base.accel * (1 + (t.engine || 0) * 0.05),
+    turn: base.turn * (1 + (t.wheels || 0) * 0.05),
+  };
+  car.maxHp = base.hp + (t.armor || 0) * 60;
+  if (car.hp > car.maxHp) car.hp = car.maxHp;
+}
 
 export const PED_SHIRTS = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c', '#e67e22', '#fd79a8', '#00cec9', '#fdcb6e'];
 export const PED_PANTS = ['#2c3e50', '#34495e', '#7f8c8d', '#5d4037', '#37474f', '#6c5ce7'];

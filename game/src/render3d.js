@@ -8,7 +8,7 @@
 // state and paints it.
 
 import * as THREE from 'three';
-import { DISTRICTS, WORLD_SIZE, ROAD_WIDTH, ROAD_GAP, ROAD_FIRST, ROAD_COUNT, LANDMARKS, crewUnlocked } from './config.js';
+import { DISTRICTS, WATER_Z_MAX, WATER_Z_MIN, WORLD_SIZE, ROAD_WIDTH, ROAD_GAP, ROAD_FIRST, ROAD_COUNT, LANDMARKS, crewUnlocked } from './config.js';
 import { clamp, lerp } from './rng.js';
 import { gpsRoute } from './city.js';
 
@@ -271,6 +271,33 @@ function buildCarGeometry(model) {
   return geo;
 }
 
+// ---- boat geometry (v14; merged, vertex-coloured, forward = +z) ----
+
+function buildBoatGeometry(model) {
+  const parts = [];
+  const len = model.len;
+  const wid = model.wid;
+  const hl = len / 2;
+  const hull = model.color;
+  const deck = '#f4f6f7';
+  const dark = '#1c1f24';
+  // Hull: a long tapered slab, bow rising at the front, white deck
+  // stripe on top so the boat reads from the chase camera.
+  parts.push(extrudeProfile([
+    [-hl, 0.1], [-hl, 0.55], [-hl * 0.4, 0.62], [hl * 0.85, 0.62], [hl, 0.9], [hl, 0.1],
+  ], wid - 0.1, 0.05, 0.04, hull));
+  boxPart(parts, wid * 0.82, 0.1, len * 0.82, 0, 0.66, 0, deck); // deck
+  // Console + windscreen, forward of centre.
+  boxPart(parts, wid * 0.5, 0.55, 0.5, 0, 0.95, hl * 0.25, dark);
+  boxPart(parts, wid * 0.5, 0.4, 0.08, 0, 1.15, hl * 0.5, '#7fb3c8');
+  // Outboard motor at the stern.
+  boxPart(parts, 0.5, 0.7, 0.4, 0, 0.6, -hl - 0.1, dark);
+  // Bow light (red) + stern light (white) so the boat reads at night.
+  spherePart(parts, 0.09, 0, 0.95, hl + 0.05, '#ff2222', 1, 1, 1);
+  spherePart(parts, 0.09, 0, 0.8, -hl - 0.05, '#fff8d0', 1, 1, 1);
+  return mergeGeometries(parts);
+}
+
 function buildCharacterGeometry(shirt, pants, skin) {
   const parts = [];
   // Rounded torso (flattened capsule), round head, capsule limbs.
@@ -384,6 +411,7 @@ export class Board {
 
     this.city = null;
     this.carMeshes = new Map(); // car object -> mesh
+    this.boatMeshes = new Map(); // boat object -> mesh (v14)
     this.charMeshes = new Map(); // ped/goon object -> mesh
     this.charGeoCache = new Map(); // shirt|pants|skin -> shared character geometry
     this.wheelMesh = null;
@@ -399,6 +427,9 @@ export class Board {
     this.heliRotor = null;
     this.heliCone = null;
     this.heliDisc = null;
+    this.headlightCone = null; // player car's headlight beam (v14, night)
+    this.headlightDisc = null; // headlight pool on the road ahead
+    this.seaMesh = null; // 3D water plane over the south sea strip (v14)
     this.lighthouseBeam = null;
     this.coinMesh = null;
     this.windowMat = null;
@@ -714,6 +745,27 @@ export class Board {
     water.position.set(LANDMARKS.plaza.x, 1.1, LANDMARKS.plaza.z + 10);
     this.scene.add(water);
 
+    // The sea (v14): a translucent 3D water plane over the south strip
+    // (sand z 512–526, water z 526–540 in the ground texture) so the
+    // boats have something to float on — plus orange channel buoys
+    // marking the boat lane down the coast.
+    this.seaMesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(WORLD_SIZE, WATER_Z_MAX - WATER_Z_MIN),
+      new THREE.MeshLambertMaterial({ color: '#2f8fc4', transparent: true, opacity: 0.85 }),
+    );
+    this.seaMesh.rotation.x = -Math.PI / 2;
+    this.seaMesh.position.set(WORLD_SIZE / 2, 0.08, (WATER_Z_MIN + WATER_Z_MAX) / 2);
+    this.seaMesh.receiveShadow = true;
+    this.scene.add(this.seaMesh);
+    const buoyGeo = new THREE.SphereGeometry(0.55, 10, 8);
+    const buoyMat = new THREE.MeshLambertMaterial({ color: '#ff6b35' });
+    for (const bx of [60, 180, 300, 420, 500]) {
+      const buoy = new THREE.Mesh(buoyGeo, buoyMat);
+      buoy.position.set(bx, 0.35, 537.5);
+      buoy.castShadow = true;
+      this.scene.add(buoy);
+    }
+
     // Wheels: one instanced cylinder for every car slot.
     const wheelGeo = new THREE.CylinderGeometry(0.34, 0.34, 0.26, 10);
     wheelGeo.rotateZ(Math.PI / 2);
@@ -807,6 +859,27 @@ export class Board {
     this.heliDisc.visible = false;
     this.scene.add(this.heliDisc);
 
+    // Headlights (v14): a beam cone + a light pool on the road ahead
+    // of the player's car, shown at night — the night-neon shot's
+    // headlights. The cone's apex sits at the car's nose; the pool
+    // lands ~10 m ahead. Positioned per frame in sync().
+    const hlConeGeo = new THREE.ConeGeometry(3.2, 14, 12, 1, true);
+    hlConeGeo.translate(0, -7, 0);
+    hlConeGeo.rotateX(-Math.PI / 2); // apex at the origin, base 14 m ahead (+z)
+    this.headlightCone = new THREE.Mesh(
+      hlConeGeo,
+      new THREE.MeshBasicMaterial({ color: '#fff2b0', transparent: true, opacity: 0.13, side: THREE.DoubleSide, depthWrite: false }),
+    );
+    this.headlightCone.visible = false;
+    this.scene.add(this.headlightCone);
+    this.headlightDisc = new THREE.Mesh(
+      new THREE.CircleGeometry(3.5, 20),
+      new THREE.MeshBasicMaterial({ color: '#fff2b0', transparent: true, opacity: 0.22, depthWrite: false }),
+    );
+    this.headlightDisc.rotation.x = -Math.PI / 2;
+    this.headlightDisc.visible = false;
+    this.scene.add(this.headlightDisc);
+
     // Objective marker: ring + light pillar + bobbing diamond.
     const ring = new THREE.Mesh(
       new THREE.RingGeometry(1, 1.15, 32),
@@ -865,6 +938,26 @@ export class Board {
       this.scene.remove(mesh);
       mesh.geometry.dispose();
       this.carMeshes.delete(car);
+    }
+  }
+
+  getBoatMesh(boat) {
+    let mesh = this.boatMeshes.get(boat);
+    if (!mesh) {
+      mesh = new THREE.Mesh(buildBoatGeometry(boat.model), this.carMaterial);
+      mesh.castShadow = true;
+      this.scene.add(mesh);
+      this.boatMeshes.set(boat, mesh);
+    }
+    return mesh;
+  }
+
+  removeBoatMesh(boat) {
+    const mesh = this.boatMeshes.get(boat);
+    if (mesh) {
+      this.scene.remove(mesh);
+      mesh.geometry.dispose();
+      this.boatMeshes.delete(boat);
     }
   }
 
@@ -998,6 +1091,22 @@ export class Board {
       if (!seenCars.has(car)) this.removeCarMesh(car);
     }
 
+    // Boats (v14): float on the water plane with a gentle bob and roll.
+    const seenBoats = new Set();
+    for (const boat of state.boats || []) {
+      if (boat.removed) continue;
+      seenBoats.add(boat);
+      const mesh = this.getBoatMesh(boat);
+      const bob = Math.sin(time * 1.6 + boat.id * 1.7) * 0.06;
+      mesh.position.set(boat.x, 0.05 + bob, boat.z);
+      mesh.rotation.y = boat.yaw;
+      mesh.rotation.z = clamp(-boat.vL * 0.004, -0.05, 0.05) + Math.sin(time * 1.1 + boat.id) * 0.02;
+      mesh.rotation.x = clamp(-boat.vF * 0.0006, -0.03, 0.03);
+    }
+    for (const [boat, mesh] of this.boatMeshes) {
+      if (!seenBoats.has(boat)) this.removeBoatMesh(boat);
+    }
+
     // Player character.
     if (player.onFoot) {
       const pm = state.playerMesh;
@@ -1064,6 +1173,28 @@ export class Board {
     } else {
       this.heliGroup.visible = false;
       this.heliDisc.visible = false;
+    }
+
+    // Headlights (v14): at night the player's car throws a beam ahead
+    // and a pool of light on the road — the night-neon shot. (The
+    // night factor is from the previous frame's updateLighting; staged
+    // shots sync twice, so it is set by the time the frame is taken.)
+    const nightOn = (state.nightFactor || 0) > 0.4 && !player.onFoot && player.car;
+    if (nightOn) {
+      const car = player.car;
+      const fx = Math.sin(car.yaw);
+      const fz = Math.cos(car.yaw);
+      const noseX = car.x + fx * (car.model.len / 2);
+      const noseZ = car.z + fz * (car.model.len / 2);
+      this.headlightCone.visible = true;
+      this.headlightCone.position.set(noseX, 0.7, noseZ);
+      this.headlightCone.rotation.order = 'YXZ';
+      this.headlightCone.rotation.set(0.1, car.yaw, 0); // +0.1 tips the beam down onto the road
+      this.headlightDisc.visible = true;
+      this.headlightDisc.position.set(car.x + fx * 11, 0.12, car.z + fz * 11);
+    } else {
+      this.headlightCone.visible = false;
+      this.headlightDisc.visible = false;
     }
 
     // Particles.
@@ -1225,8 +1356,11 @@ export class Board {
   // of mid-spring from the high title-screen view.
   chaseTarget(state) {
     const player = state.player;
-    const inCar = !player.onFoot && player.car;
-    const speed = inCar ? Math.abs(player.car.vF || 0) : (player.speed || 0);
+    // The vehicle the player is driving — a car or a boat (v14); the
+    // chase camera follows either, since the player rides their vehicle.
+    const veh = !player.onFoot ? (player.car || player.boat) : null;
+    const inCar = !!veh;
+    const speed = veh ? Math.abs(veh.vF || 0) : (player.speed || 0);
     const yaw = player.yaw;
     const fx = Math.sin(yaw);
     const fz = Math.cos(yaw);
@@ -1255,9 +1389,10 @@ export class Board {
 
   updateCamera(state, dt) {
     const player = state.player;
-    const inCar = !player.onFoot && player.car;
-    const speed = inCar ? Math.abs(player.car.vF || 0) : (player.speed || 0);
-    const maxSpeed = inCar ? 42 * player.car.model.maxSpeed : 6;
+    const veh = !player.onFoot ? (player.car || player.boat) : null;
+    const inCar = !!veh;
+    const speed = veh ? Math.abs(veh.vF || 0) : (player.speed || 0);
+    const maxSpeed = veh ? 42 * veh.model.maxSpeed : 6;
     const speedRatio = clamp(speed / maxSpeed, 0, 1);
     const t = this.chaseTarget(state);
     const desiredX = t.x;
@@ -1488,6 +1623,19 @@ export class Board {
       g.textAlign = 'center';
       g.textBaseline = 'middle';
       g.fillText('H', (state.heli.x - px) * scale, (state.heli.z - pz) * scale);
+    }
+    // Boats (v14): cyan dots on the water.
+    if (state.boats) {
+      g.fillStyle = '#00cec9';
+      const maxR = S / 2 - 4;
+      for (const boat of state.boats) {
+        const dx = (boat.x - px) * scale;
+        const dy = (boat.z - pz) * scale;
+        if (Math.hypot(dx, dy) > maxR) continue;
+        g.beginPath();
+        g.arc(dx, dy, 3, 0, Math.PI * 2);
+        g.fill();
+      }
     }
     g.restore();
     // District name (v5): the neighbourhood the player is in, bottom

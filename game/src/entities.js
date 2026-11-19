@@ -7,8 +7,9 @@
 // car and resolves every collision.
 
 import {
-  CAR_MODELS, PED_PANTS, PED_SHIRTS, PED_SKINS, PLAYER_MAX_HEALTH,
-  PLAYER_RADIUS, PLAYER_RUN_SPEED, PLAYER_WALK_SPEED, PED_TOPUP_MIN, crewUnlocked,
+  BOAT_MODELS, CAR_MODELS, PED_PANTS, PED_SHIRTS, PED_SKINS, PLAYER_MAX_HEALTH,
+  PLAYER_RADIUS, PLAYER_RUN_SPEED, PLAYER_WALK_SPEED, PED_TOPUP_MIN, SHORE_Z,
+  WATER_Z_MAX, WATER_Z_MIN, crewUnlocked,
   ROAD_WIDTH, WEAPONS, WORLD_SIZE,
 } from './config.js';
 import { collideCarBuildings, collideCars, collideFootBuildings, stepCar } from './physics.js';
@@ -20,7 +21,7 @@ let carId = 0;
 
 export function createPlayer(x, z) {
   return {
-    x, z, yaw: Math.PI, onFoot: true, car: null, health: PLAYER_MAX_HEALTH,
+    x, z, yaw: Math.PI, onFoot: true, car: null, boat: null, health: PLAYER_MAX_HEALTH,
     walkPhase: 0, moving: false, speed: 0, aimX: x, aimZ: z + 5,
     firing: false, fireCooldown: 0, weapon: 'pistol', ammo: { pistol: Infinity, smg: 0, shotgun: 0, rifle: 0, ar9: 0, breaker: 0 },
     weaponsOwned: ['pistol'], money: 0, rep: 0, armour: 0, punchCooldown: 0,
@@ -44,6 +45,9 @@ export function spawnCar(state, modelName, x, z, yaw, opts = {}) {
     burnTimer: 0, smokeTimer: 0, engine: opts.engine || 0, armor: 0,
     color: opts.color || model.color, removed: false, stoppedTimer: 0,
     lastX: x, lastZ: z,
+    // The base model is kept so tuning (v14) never compounds:
+    // applyTune recomputes from here, and the garage stores the levels.
+    baseModel: model, tune: { engine: opts.engine || 0, armor: 0, wheels: 0 },
   };
   state.cars.push(car);
   return car;
@@ -470,6 +474,9 @@ export function updatePlayer(state, input, dt) {
     const r = collideFootBuildings(city, p.x, p.z, PLAYER_RADIUS);
     p.x = clamp(r.x, 3, WORLD_SIZE - 3);
     p.z = clamp(r.z, 3, WORLD_SIZE - 3);
+    // The shore (v14): on foot the player wades to the waterline but
+    // never walks on the sea — the boats are boarded from the sand.
+    p.z = Math.min(p.z, SHORE_Z + 1);
     // Peds are soft obstacles.
     for (const ped of state.peds) {
       const dx = p.x - ped.x;
@@ -499,6 +506,13 @@ export function updatePlayer(state, input, dt) {
     car.throttle = input.forward ? 1 : input.back ? -1 : 0;
     car.steerIn = (input.left ? -1 : 0) + (input.right ? 1 : 0);
     car.handbrake = !!input.handbrake;
+  } else if (p.boat) {
+    // Driving a boat (v14): same inputs as a car, no drift — the water
+    // does the sliding. The boat's own physics runs in updateBoats.
+    const boat = p.boat;
+    boat.throttle = input.forward ? 1 : input.back ? -0.6 : 0;
+    boat.steerIn = (input.left ? -1 : 0) + (input.right ? 1 : 0);
+    boat.handbrake = !!input.handbrake;
   }
 }
 
@@ -592,6 +606,107 @@ export function exitCar(state) {
   p.x = r.x;
   p.z = r.z;
   return true;
+}
+
+// ---- boats (v14): drivable on the south sea strip ----
+
+let boatId = 0;
+
+export function boatModelByName(name) {
+  return BOAT_MODELS.find((m) => m.name === name) || BOAT_MODELS[0];
+}
+
+export function spawnBoat(state, modelName, x, z, yaw) {
+  const model = typeof modelName === 'string' ? boatModelByName(modelName) : modelName;
+  const boat = {
+    id: ++boatId,
+    model, baseModel: model, x, z, yaw, vF: 0, vL: 0, steer: 0, steerIn: 0, throttle: 0,
+    handbrake: false, hp: model.hp, maxHp: model.hp,
+    state: 'docked', isBoat: true, removed: false,
+    speed: 0, drifting: false, slip: 0, wheelSpin: 0, accelVis: 0,
+    wakeTimer: 0, crewBoost: false,
+  };
+  state.boats.push(boat);
+  return boat;
+}
+
+/** Nearest boat to (x, z) within maxD metres, or null. */
+export function nearestBoat(state, x, z, maxD) {
+  let best = null;
+  let bestD = maxD;
+  for (const boat of state.boats || []) {
+    if (boat.removed) continue;
+    const d = Math.hypot(boat.x - x, boat.z - z);
+    if (d < bestD) { bestD = d; best = boat; }
+  }
+  return best;
+}
+
+export function tryEnterBoat(state) {
+  const p = state.player;
+  if (!p.onFoot) return false;
+  const boat = nearestBoat(state, p.x, p.z, 8);
+  if (!boat) return false;
+  p.onFoot = false;
+  p.boat = boat;
+  boat.state = 'player';
+  boat.throttle = 0;
+  boat.steerIn = 0;
+  state.toast = boat.model.name === 'Speedboat'
+    ? 'The Speedboat — the fastest thing on the water. Hold W to open it up.'
+    : 'The Dinghy — slow, steady, and nobody looks twice.';
+  state.toastTimer = 3;
+  return true;
+}
+
+export function exitBoat(state) {
+  const p = state.player;
+  if (p.onFoot || !p.boat) return false;
+  const boat = p.boat;
+  // Step ashore: the player lands on the sand at the waterline, facing
+  // the boat they just left.
+  p.x = boat.x;
+  p.z = Math.min(boat.z, SHORE_Z);
+  p.yaw = boat.yaw;
+  p.onFoot = true;
+  p.boat = null;
+  boat.state = 'docked';
+  boat.throttle = 0;
+  boat.steerIn = 0;
+  boat.handbrake = false;
+  return true;
+}
+
+export function updateBoats(state, dt) {
+  for (const boat of state.boats || []) {
+    if (boat.removed || boat.state !== 'player') continue;
+    const prevVF = boat.vF;
+    stepCar(boat, dt, 1);
+    boat.wheelSpin += (boat.vF / 0.34) * dt;
+    boat.accelVis = (boat.vF - prevVF) / dt;
+    // The sea band is the boat's world: clamp to the water and damp the
+    // push into the shore so a boat slides along the beach instead of
+    // beaching itself on the sand.
+    if (boat.z < WATER_Z_MIN) { boat.z = WATER_Z_MIN; boat.vF *= 0.9; }
+    if (boat.z > WATER_Z_MAX) { boat.z = WATER_Z_MAX; boat.vF *= 0.9; }
+    if (boat.x < 4) { boat.x = 4; boat.vF *= 0.5; }
+    if (boat.x > WORLD_SIZE - 4) { boat.x = WORLD_SIZE - 4; boat.vF *= 0.5; }
+    // Wake: white spray off the stern while the boat is moving.
+    boat.wakeTimer -= dt;
+    if (Math.abs(boat.vF) > 5 && boat.wakeTimer <= 0) {
+      boat.wakeTimer = 0.12;
+      const fx = Math.sin(boat.yaw);
+      const fz = Math.cos(boat.yaw);
+      spawnParticles(state, boat.x - fx * boat.model.len * 0.45, 0.25, boat.z - fz * boat.model.len * 0.45,
+        { count: 2, color: '#dff3ff', speed: 1.5, life: 0.8, up: 1, gravity: 0.5 });
+    }
+    // The player rides the boat they drive — the same sync cars use.
+    if (boat === state.player.boat && !state.player.onFoot) {
+      state.player.x = boat.x;
+      state.player.z = boat.z;
+      state.player.yaw = boat.yaw;
+    }
+  }
 }
 
 // ---- traffic AI (lane following, pure pursuit) ----
@@ -876,6 +991,17 @@ export function updateCars(state, dt) {
     }
     car.lastX = prevX;
     car.lastZ = prevZ;
+    // THE FIX (v14): the player rides the car they drive. Before this
+    // the car moved but p.x/p.z/p.yaw never followed it, so the chase
+    // camera stayed at the entry point, `goto` steps in a car never
+    // completed by driving, and the police chased the entry point.
+    // Synced after step + collision, so the player IS where their car
+    // is — the same sync boats use.
+    if (car === state.player.car && !state.player.onFoot) {
+      state.player.x = car.x;
+      state.player.z = car.z;
+      state.player.yaw = car.yaw;
+    }
   }
   // Car vs car.
   const cars = state.cars;

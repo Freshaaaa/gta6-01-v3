@@ -10,23 +10,23 @@
 
 import * as THREE from 'three';
 import {
-  CAR_MODELS, CLOCK_START_MINUTES, FEED_SEEDS, LANDMARKS, PED_COUNT, PHONE_CONTACTS,
-  STEP, WEATHER_CLEAR, WEATHER_MAX_SECONDS, WEATHER_MIN_SECONDS,
-  WEATHER_RAIN, WEATHER_STORM, WORLD_SIZE,
+  BOAT_DOCKS, CAR_MODELS, CLOCK_START_MINUTES, FEED_SEEDS, LANDMARKS, PED_COUNT, PHONE_CONTACTS,
+  SHORE_Z, STEP, WEATHER_CLEAR, WEATHER_MAX_SECONDS, WEATHER_MIN_SECONDS,
+  WEATHER_RAIN, WEATHER_STORM, WORLD_SIZE, applyTune, tuneLevel,
 } from './config.js';
 import { generateCity, gpsRoute, lanePoint, nearestLane, segmentBlocked } from './city.js';
 import { mulberry32, clamp, dist2, pick, rand, yawFromDir } from './rng.js';
 import {
-  createPlayer, exitCar, hurtPlayer, spawnCar, spawnGoon, spawnParkedCars,
-  spawnPeds, spawnScenePeds, spawnTraffic, tryEnterCar, updateCars,
-  updateCoins, updateGoons, updateParticles, updatePeds, updatePlayer,
+  createPlayer, exitBoat, exitCar, hurtPlayer, nearestBoat, spawnBoat, spawnCar, spawnGoon, spawnParkedCars,
+  spawnPeds, spawnScenePeds, spawnTraffic, tryEnterBoat, tryEnterCar, updateBoats,
+  updateCars, updateCoins, updateGoons, updateParticles, updatePeds, updatePlayer,
   updateTraffic,
 } from './entities.js';
 import { updateHeli, updatePolice, updateWanted } from './police.js';
 import { MISSIONS, makeCourierJob, objectiveText } from './missions.js';
 import {
   pushFeed, safehouseTick, shopCycle, storeCarInGarage, takeOutGarageCar,
-  tryChop, tryOutfit, tryRespray, tryStartRace, tryStartTaxi, updateRace,
+  tryChop, tryOutfit, tryRespray, tryStartRace, tryStartTaxi, tryTune, updateRace,
   updateTaxi, updateVan, upgradeGarageCar,
 } from './activities.js';
 import {
@@ -57,7 +57,7 @@ function newState(existingCity) {
     realTime: 0, // wall-clock seconds since boot; keeps running while paused/wasted
     rng, city, seed: SEED,
     player,
-    cars: [], peds: [], goons: [],
+    cars: [], boats: [], peds: [], goons: [],
     particles: new Array(500).fill(null),
     tracers: new Array(16).fill(null),
     heli: null,
@@ -72,7 +72,7 @@ function newState(existingCity) {
     van: { active: false, car: null, crack: 0 }, vanTimer: 90, vanPrompt: false,
     feed: FEED_SEEDS.map((f) => ({ ...f, time: CLOCK_START_MINUTES })),
     contacts: PHONE_CONTACTS,
-    phoneOpen: false, garageOpen: false, garage: [],
+    phoneOpen: false, garageOpen: false, tuningOpen: false, garage: [],
     coinsCollected: 0, vansRobbed: 0, shopCycle: 0,
     safehouseTimer: 0, safehouseDone: false,
     marker: { active: false, x: 0, z: 0, radius: 10, color: '#ffd700' },
@@ -120,6 +120,14 @@ function populate() {
   spawnParkedCars(state, 24);
   spawnTraffic(state, 14);
   spawnPeds(state, PED_COUNT);
+  // The fleet (v14): the Dinghy moored at the Marina Pier and the
+  // Speedboat by the Lighthouse — both drivable from the start, both
+  // on the water off the south shore, both facing east along the coast
+  // (the mission buoys run east), so holding W sails the coast instead
+  // of pushing into the south boundary.
+  for (const dock of Object.values(BOAT_DOCKS)) {
+    spawnBoat(state, dock.model, dock.x, dock.z, Math.PI / 2);
+  }
 }
 
 // ---- missions ----
@@ -193,6 +201,28 @@ function startStep() {
       state.checkpoints = step.checkpoints.map((c) => ({ ...c, radius: 10, hit: false }));
       state.marker = { active: false, x: 0, z: 0, radius: 10, color: '#ffd700' };
       state.wantedHeat = Math.max(state.wantedHeat, step.heat || 0);
+      break;
+    }
+    case 'board': {
+      // A boat is moored at the dock: if the player left every boat
+      // far away (finished a sea run at the other end of the coast),
+      // a Dinghy is waiting at this dock — the mission never strands
+      // the player without a boat.
+      state.marker = { active: true, x: step.x, z: step.z, radius: step.radius, color: '#00cec9' };
+      state.gpsRoute = gpsRoute(state.player.x, state.player.z, step.x, step.z);
+      if (!nearestBoat(state, step.x, step.z, 40)) {
+        // Facing east, along the coast, like the docked fleet.
+        spawnBoat(state, 'Dinghy', step.x, step.z, Math.PI / 2);
+      }
+      break;
+    }
+    case 'tune': {
+      // The level the car starts at: the step completes when the tune
+      // rises above it (or reaches step.min, for Tune Wars).
+      const p = state.player;
+      state.stepState.tuneStart = p.car ? tuneLevel(p.car) : 0;
+      state.marker = { active: true, x: LANDMARKS.tuner.x, z: LANDMARKS.tuner.z, radius: 14, color: '#f1c40f' };
+      state.gpsRoute = gpsRoute(state.player.x, state.player.z, LANDMARKS.tuner.x, LANDMARKS.tuner.z);
       break;
     }
     default:
@@ -326,6 +356,19 @@ function checkStep(dt) {
       if (state.wantedStars === 0 && d(step.x, step.z) < step.radius) nextStep();
       break;
     }
+    case 'board': {
+      if (!p.onFoot && p.boat) nextStep();
+      break;
+    }
+    case 'tune': {
+      // The tune must rise: one level above the step's start, or the
+      // step's minimum (Tune Wars needs TUNE 2). The purchase happens
+      // in the tuning menu, so this fires on the first step after the
+      // player closes the menu with a higher tune level.
+      const need = step.min || ((ss.tuneStart || 0) + 1);
+      if (p.car && tuneLevel(p.car) >= need) nextStep();
+      break;
+    }
     default:
       break;
   }
@@ -339,9 +382,11 @@ function computePrompt() {
   const docks = LANDMARKS.docks;
   const diner = LANDMARKS.diner;
   const stadium = LANDMARKS.stadium;
+  const tuner = LANDMARKS.tuner;
   if (state.dialogue.length > 0) return 'Enter — continue';
   if (state.phoneOpen) return 'C — close phone';
   if (state.garageOpen) return 'G — close garage';
+  if (state.tuningOpen) return '1–4 buy upgrade · G — close tuning';
   if (state.vanPrompt) return 'Hold E — crack the van';
   const m = state.mission;
   if (m) {
@@ -351,16 +396,22 @@ function computePrompt() {
       if (step.type === 'pickup' && Math.hypot(p.x - step.x, p.z - step.z) < step.radius) return 'E — Pick up';
       if (step.type === 'hold' && Math.hypot(p.x - step.x, p.z - step.z) < step.radius) return 'Hold E — crack it';
       if (step.type === 'steal') return 'E — Get in a car';
+      if (step.type === 'board' && p.onFoot) return 'E — Board the boat';
+      if (step.type === 'tune' && !p.onFoot && p.car) return 'E — Tuning garage';
     }
   }
+  if (!p.onFoot && p.boat) return 'E — Get out (dock)';
   if (!p.onFoot && p.car) {
     if (dist2(p.x, p.z, stadium.x, stadium.z) < 20 * 20 && !state.race.active) return 'T — Start street race ($500) · E — Get out';
     if (p.car.taxi && !state.taxi.active) return 'T — Start taxi fare · E — Get out';
     if (dist2(p.x, p.z, docks.x, docks.z) < 16 * 16) return 'E — Sell to chop shop';
     if (dist2(p.x, p.z, h.x, h.z) < 14 * 14 && state.wantedStars > 0) return 'E — Respray $200 (lose the cops)';
+    if (dist2(p.x, p.z, tuner.x, tuner.z) < 14 * 14) return 'E — Tuning garage';
     return 'E — Get out';
   }
   // On foot.
+  const nearBoat = nearestBoat(state, p.x, p.z, 8);
+  if (nearBoat) return `E — Board the ${nearBoat.model.name}`;
   for (const car of state.cars) {
     if (car.state === 'wreck' || car.state === 'burning') continue;
     if (Math.hypot(car.x - p.x, car.z - p.z) - car.model.len / 2 < 4.2) return 'E — Get in the car';
@@ -376,6 +427,7 @@ function handleInteractPressed() {
   const docks = LANDMARKS.docks;
   const diner = LANDMARKS.diner;
   const stadium = LANDMARKS.stadium;
+  const tuner = LANDMARKS.tuner;
   // A mission step that needs E nearby wins over every context action
   // — but only on foot: in a car, E still exits the car first, and the
   // step is done on the next press. checkStep (which runs right after
@@ -386,12 +438,20 @@ function handleInteractPressed() {
     if (step && (step.type === 'talk' || step.type === 'pickup' || step.type === 'hold') &&
         Math.hypot(p.x - step.x, p.z - step.z) < step.radius) return;
   }
+  if (!p.onFoot && p.boat) {
+    exitBoat(state);
+    return;
+  }
   if (!p.onFoot && p.car) {
     if (dist2(p.x, p.z, docks.x, docks.z) < 16 * 16) { tryChop(state); return; }
     if (dist2(p.x, p.z, h.x, h.z) < 14 * 14 && state.wantedStars > 0) { tryRespray(state); return; }
+    if (dist2(p.x, p.z, tuner.x, tuner.z) < 14 * 14) { state.tuningOpen = true; return; }
     exitCar(state);
     return;
   }
+  // On foot: a boat wins over a car when both are near (the pier and
+  // the beach road run side by side).
+  if (tryEnterBoat(state)) return;
   // On foot: don't enter the money van (E cracks it instead).
   if (state.van.active && state.van.car && Math.hypot(p.x - state.van.car.x, p.z - state.van.car.z) < 5) return;
   if (dist2(p.x, p.z, h.x, h.z) < 14 * 14) { shopCycle(state); return; }
@@ -461,11 +521,13 @@ function step(dt) {
     state.prompt = computePrompt();
     return;
   }
-  // Phone / garage pause the world.
-  if (state.phoneOpen || state.garageOpen) {
+  // Phone / garage / tuning pause the world.
+  if (state.phoneOpen || state.garageOpen || state.tuningOpen) {
     if (input.phonePressed && state.phoneOpen) { state.phoneOpen = false; }
     if (input.garagePressed && state.garageOpen) { state.garageOpen = false; }
+    if (input.garagePressed && state.tuningOpen) { state.tuningOpen = false; }
     handleGarageKeys();
+    handleTuningKeys();
     state.prompt = computePrompt();
     return;
   }
@@ -497,6 +559,7 @@ function step(dt) {
   updateTraffic(state, dt);
   updatePolice(state, dt);
   updateCars(state, dt);
+  updateBoats(state, dt);
   updatePeds(state, dt);
   updateGoons(state, dt);
   updateHeli(state, dt);
@@ -530,7 +593,9 @@ function step(dt) {
 
   // Audio.
   const inCar = !p.onFoot && p.car;
-  updateEngine(inCar ? clamp(Math.abs(p.car.vF) / (42 * p.car.model.maxSpeed), 0, 1) : 0, inCar);
+  const inBoat = !p.onFoot && p.boat;
+  const veh = p.car || p.boat;
+  updateEngine(veh ? clamp(Math.abs(veh.vF) / (42 * veh.model.maxSpeed), 0, 1) : 0, inCar || inBoat);
   updateSiren(state.wantedStars > 0);
   if (state.heli && state.heli.active && Math.floor(state.time * 4) !== Math.floor((state.time - dt) * 4)) {
     updateHeliRotor(true);
@@ -544,6 +609,18 @@ function handleGarageKeys() {
   else if (input.digit === 4) upgradeGarageCar(state, 0, 'engine');
   else if (input.digit === 5) upgradeGarageCar(state, 0, 'armor');
   else if (input.digit === 6) upgradeGarageCar(state, 0, 'paint');
+  else if (input.digit === 7) upgradeGarageCar(state, 0, 'wheels');
+}
+
+// Tuning menu (v14): 1 engine $400 · 2 armour $300 · 3 wheels $200 ·
+// 4 paint $150 — buys an upgrade for the car the player is sitting in.
+function handleTuningKeys() {
+  if (!state.tuningOpen) return;
+  const input = state.input;
+  if (input.digit === 1) tryTune(state, 'engine');
+  else if (input.digit === 2) tryTune(state, 'armor');
+  else if (input.digit === 3) tryTune(state, 'wheels');
+  else if (input.digit === 4) tryTune(state, 'paint');
 }
 
 const raycaster = new THREE.Raycaster();
@@ -668,6 +745,7 @@ function frame(now) {
   hud.update(state, dtReal);
   hud.renderPhone(state);
   hud.renderGarage(state);
+  hud.renderTuning(state);
   // In manual-step mode the debug step() clears the edges itself, so a
   // press() is not eaten by the render loop before the test steps.
   if (state.autoTick) clearEdges(input);
@@ -727,6 +805,7 @@ function respawn() {
   p.yaw = Math.PI;
   p.onFoot = true;
   p.car = null;
+  if (p.boat) { p.boat.state = 'docked'; p.boat.throttle = 0; p.boat = null; }
   state.wantedHeat = 0;
   state.wantedStars = 0;
   state.wantedState = 'none';
@@ -892,6 +971,30 @@ function placeHeliInFrame(state) {
   h.lightZ = p.z;
 }
 
+// Place pursuit cruisers on the shore road ahead of a boat (v14):
+// cruisers cannot drive on the water, so for a boat shot they hold the
+// shoreline parallel to the boat — the chase reads from the boat's
+// camera, with the cops on the beach road to the north.
+function placeCruisersOnShore(state) {
+  const p = state.player;
+  const cops = state.cars
+    .filter((c) => c.police && c.state !== 'wreck' && !c.burning)
+    .sort((a, b) => (Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z)));
+  const spots = [
+    { ahead: 30, vF: 18 },
+    { ahead: 55, vF: 15 },
+  ];
+  for (let i = 0; i < Math.min(spots.length, cops.length); i++) {
+    const car = cops[i];
+    const s = spots[i];
+    car.x = p.x + s.ahead;
+    car.z = 510;
+    car.yaw = Math.PI / 2;
+    car.vF = s.vF;
+    car.state = 'chase';
+  }
+}
+
 function stageShot() {
   populate();
   state.mode = 'play';
@@ -1025,6 +1128,86 @@ function stageShot() {
     placeCruisersInFrame(state);
     placeHeliInFrame(state);
     spawnNearbyTraffic(state, 6);
+  } else if (SHOT === 'boat') {
+    // Bright DAYTIME boat run (v14): The Smuggler's Run (m13) timed
+    // checkpoints — the Dinghy on the water off the Marina coast,
+    // the beach and the pier behind, the cops holding the shore road.
+    // $38,000 honestly earned by then: m1–m12 rewards ($33,700) +
+    // side income ($4,700) − the m11 engine tune ($400). Rep 150
+    // (12 missions + 15 kills) — RANK S, day 13, armour 60.
+    state.clockMinutes = 15 * 60;
+    state.weather = WEATHER_CLEAR;
+    const boat = state.boats.find((b) => b.model.name === 'Dinghy') || state.boats[0];
+    p.x = 300;
+    p.z = 533;
+    p.onFoot = false;
+    p.boat = boat;
+    boat.state = 'player';
+    boat.x = 300;
+    boat.z = 533;
+    boat.yaw = Math.PI / 2;
+    boat.vF = 15;
+    p.yaw = boat.yaw;
+    p.money = 38000;
+    p.rep = 150;
+    state.day = 13;
+    p.armour = 60;
+    p.weaponsOwned = ['pistol', 'smg', 'shotgun', 'rifle', 'ar9', 'breaker'];
+    p.ammo = { pistol: Infinity, smg: 150, shotgun: 28, rifle: 120, ar9: 90, breaker: 40 };
+    p.weapon = 'smg';
+    stageMission(12, 3, "VINCE: Grab the crate at the pier, take the Dinghy, and run the whole coast to the east buoy. The cops will be on the shore watching you sail past.");
+    state.stepState.timeLeft = 138;
+    state.wantedHeat = 50;
+    state.wantedStars = 2;
+    state.wantedState = 'chasing';
+    state.lastSeen = { x: p.x, z: p.z };
+    runChaseSim(state, 600);
+    placeCruisersOnShore(state);
+    spawnNearbyTraffic(state, 6);
+  } else if (SHOT === 'night') {
+    // NIGHT NEON (v14): Tune Wars (m14) timed checkpoints — a tuned
+    // Strada at TUNE 2 down The Strip at 21:45, neon signs and lamps
+    // glowing, headlights on, 4 stars with the helicopter up. $42,600
+    // honestly earned by then: m1–m13 rewards ($38,700) + side income
+    // ($4,700) − tuning ($800: engine Lv1 in m11, engine Lv2 in m14).
+    // Rep 160 (13 missions + 15 kills) — RANK S, day 14, armour 70.
+    // The car is the Strada the mission makes the player steal and
+    // tune — the HUD reads "Strada · TUNE 2", matching the mission
+    // panel ("Bring the tuned Strada to the Hideout").
+    state.clockMinutes = 21 * 60 + 45;
+    state.weather = WEATHER_CLEAR;
+    const car = state.cars.find((c) => c.model.name === 'Strada')
+      || state.cars.find((c) => c.model.name === 'Aurora') || state.cars[0];
+    p.x = 390;
+    p.z = 450;
+    p.onFoot = false;
+    p.car = car;
+    car.state = 'player';
+    car.vF = 24;
+    car.yaw = Math.PI / 2;
+    p.yaw = car.yaw;
+    // The tune is real: engine level 2, applied through applyTune,
+    // so the car genuinely drives faster and the HUD reads TUNE 2.
+    car.tune = { engine: 2, armor: 0, wheels: 0 };
+    car.engine = 2;
+    applyTune(car);
+    p.money = 42600;
+    p.rep = 160;
+    state.day = 14;
+    p.armour = 70;
+    p.weaponsOwned = ['pistol', 'smg', 'shotgun', 'rifle', 'ar9', 'breaker'];
+    p.ammo = { pistol: Infinity, smg: 150, shotgun: 28, rifle: 120, ar9: 90, breaker: 40 };
+    p.weapon = 'smg';
+    stageMission(13, 3, "LIO: Two upgrades minimum, Dante. Engine and wheels. I'll make it fly.");
+    state.stepState.timeLeft = 141;
+    state.wantedHeat = 100;
+    state.wantedStars = 4;
+    state.wantedState = 'chasing';
+    state.lastSeen = { x: p.x, z: p.z };
+    runChaseSim(state, 900);
+    placeCruisersInFrame(state);
+    placeHeliInFrame(state);
+    spawnNearbyTraffic(state, 6);
   }
   // Scene pedestrians for the shot: NPCs on sidewalks near the player
   // so the frame reads as a living street (v5), more of them now (v13).
@@ -1057,7 +1240,10 @@ function apiState() {
     cars: state.cars.length, peds: state.peds.length, goons: state.goons.filter((g) => g.state !== 'dead').length,
     clock: Math.floor(state.clockMinutes), weather: state.weather,
     fps,
-    car: p.car ? { model: p.car.model.name, speed: +Math.abs(p.car.vF).toFixed(1), hp: Math.round(p.car.hp) } : null,
+    car: p.car ? { model: p.car.model.name, speed: +Math.abs(p.car.vF).toFixed(1), hp: Math.round(p.car.hp), tune: tuneLevel(p.car), topSpeed: +(42 * p.car.model.maxSpeed).toFixed(1) } : null,
+    boat: p.boat ? { model: p.boat.model.name, speed: +Math.abs(p.boat.vF).toFixed(1), hp: Math.round(p.boat.hp) } : null,
+    boats: (state.boats || []).map((b) => ({ model: b.model.name, x: Math.round(b.x), z: Math.round(b.z), state: b.state })),
+    tuningOpen: !!state.tuningOpen,
     feed: state.feed.length, garage: state.garage.length,
     coins: state.coinsCollected, vansRobbed: state.vansRobbed,
     heli: state.heli ? state.heli.active : false,
@@ -1103,10 +1289,20 @@ window.__solmar = {
     p.z = z;
     if (yaw !== undefined) p.yaw = yaw;
     if (p.car) { p.car.x = x; p.car.z = z; if (yaw !== undefined) p.car.yaw = yaw; }
+    if (p.boat) { p.boat.x = x; p.boat.z = z; if (yaw !== undefined) p.boat.yaw = yaw; }
     board.camPos.set(x - Math.sin(p.yaw) * 12, 4, z - Math.cos(p.yaw) * 12);
   },
   enterNearestCar() { return tryEnterCar(state); },
   exitCar() { return exitCar(state); },
+  enterBoat() { return tryEnterBoat(state); },
+  exitBoat() { return exitBoat(state); },
+  spawnBoat(model, x, z, yaw) {
+    const boat = spawnBoat(state, model, x, z, yaw ?? 0);
+    return boat.id;
+  },
+  tune(kind) { return tryTune(state, kind); },
+  openTuning() { state.tuningOpen = true; },
+  get tuningOpen() { return state.tuningOpen; },
   spawnCar(model, x, z, yaw) {
     const car = spawnCar(state, model, x, z, yaw ?? 0, { state: 'parked' });
     return car.id;
