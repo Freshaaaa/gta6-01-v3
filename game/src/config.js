@@ -40,7 +40,7 @@ export const SECONDS_PER_GAME_HOUR = 60;
 
 // Collectibles: 20 sun-coins hidden around the city.
 export const COIN_COUNT = 20;
-export const COIN_REWARD = 75;
+export const COIN_REWARD = 150;
 
 // Districts, used for building palettes, ground tint and the minimap
 // labels. Eight of them, in a 4 x 2 layout over the city.
@@ -94,7 +94,7 @@ export const CAR_MODELS = [
 
 // The chop shop only pays for fast cars.
 export const CHOP_MODELS = ['Strada', 'Viento', 'Falco', 'Vela', 'Aurora'];
-export const CHOP_REWARD = 350;
+export const CHOP_REWARD = 600;
 
 // Weather: clear, rain and storm cycle on a timer (main.js rolls the
 // change). Rain makes the roads slick — longer braking, easier drift —
@@ -106,8 +106,8 @@ export const WEATHER_MIN_SECONDS = 150;
 export const WEATHER_MAX_SECONDS = 300;
 
 // The money van: a repeatable heist. An armored van roams the city; crack
-// it on foot (hold E, 3 s) for $500 — and 3 stars of heat.
-export const VAN_REWARD = 500;
+// it on foot (hold E, 3 s) for $800 — and 3 stars of heat.
+export const VAN_REWARD = 800;
 export const VAN_HEAT = 75;
 export const VAN_CRACK_SECONDS = 3;
 export const VAN_FIRST_DELAY = 90;
@@ -123,8 +123,64 @@ export const WEAPONS = {
   // Rifle — the Hideout's top shelf: long reach, tight spread, fast
   // tracers. Sold after the shotgun; key 4.
   rifle:   { name: 'Rifle',   damage: 20, rate: 0.09, spread: 0.03, pellets: 1, price: 1500, ammoPerShot: 1 },
+  // AR-9 — a late-game assault rifle: full-auto, tight grouping, the
+  // crew's workhorse once the big jobs start. Unlocks after m3; key 5.
+  ar9:     { name: 'AR-9',     damage: 18, rate: 0.08, spread: 0.05, pellets: 1, price: 2500, ammoPerShot: 1 },
+  // Breaker — the heavy hitter: three slugs per trigger pull, slow but
+  // it ends arguments. Unlocks after m7; key 6.
+  breaker: { name: 'Breaker', damage: 30, rate: 0.50, spread: 0.20, pellets: 3, price: 3800, ammoPerShot: 2 },
 };
-export const WEAPON_ORDER = ['pistol', 'smg', 'shotgun', 'rifle'];
+export const WEAPON_ORDER = ['pistol', 'smg', 'shotgun', 'rifle', 'ar9', 'breaker'];
+// Mission index a weapon unlocks at in the Hideout shop (0 = always).
+export const WEAPON_UNLOCK_MISSION = { pistol: 0, smg: 0, shotgun: 0, rifle: 0, ar9: 3, breaker: 7 };
+
+// Reputation ranks (v13): rep comes from the story itself — +10 per
+// mission completed, +2 per goon taken out — so the rank on the HUD is
+// a real measure of how far through the Bay the player is.
+export const RANKS = [
+  { letter: 'D', name: 'ROOKIE', min: 0 },
+  { letter: 'C', name: 'HUSTLER', min: 20 },
+  { letter: 'B', name: 'FIXER', min: 50 },
+  { letter: 'A', name: 'SHOT CALLER', min: 100 },
+  { letter: 'S', name: 'KING OF THE BAY', min: 150 },
+];
+export function rankFor(rep) {
+  let cur = RANKS[0];
+  let next = null;
+  for (let i = 0; i < RANKS.length; i++) {
+    if (rep >= RANKS[i].min) cur = RANKS[i];
+    else { next = RANKS[i]; break; }
+  }
+  const span = next ? next.min - cur.min : 50;
+  const progress = next ? (rep - cur.min) / span : 1;
+  return { rank: cur, next, progress: Math.max(0, Math.min(1, progress)) };
+}
+
+// The crew (v13): three people with real, working abilities. Mara is
+// Dante's partner from the start; Lio the mechanic joins after the
+// Getaway Driver job (m3); Kiki the lookout joins after Static (m6).
+// Unlock is by missions completed, so the HUD cards and the abilities
+// always agree with the story.
+export const CREW = [
+  { id: 'mara', name: 'Mara', role: 'Driver', ability: 'Wheelman — +10% top speed, +15% turn', color: '#e84393', unlockMission: 0, unlockText: 'Partner from the start' },
+  { id: 'lio', name: 'Lio', role: 'Mechanic', ability: 'Quick Fix — repairs your car +3 hp/s', color: '#f39c12', unlockMission: 3, unlockText: 'Unlocks after Getaway Driver' },
+  { id: 'kiki', name: 'Kiki', role: 'Lookout', ability: 'Eyes Out — all police on the minimap', color: '#1abc9c', unlockMission: 6, unlockText: 'Unlocks after Static' },
+];
+export function crewUnlocked(missionIndex, storyDone) {
+  const done = storyDone ? MISSIONS_COUNT : missionIndex;
+  const out = {};
+  for (const c of CREW) out[c.id] = done >= c.unlockMission;
+  return out;
+}
+// Mission count is defined in missions.js; the crew helper needs it
+// without a circular import, so it lives here as a plain number.
+export const MISSIONS_COUNT = 10;
+
+// Body armour (v13): absorbs damage before health does. Bought at the
+// Hideout shop; the HUD shows the armour bar next to health.
+export const PLAYER_MAX_ARMOUR = 100;
+export const ARMOUR_PRICE = 300;
+export const ARMOUR_AMOUNT = 50;
 
 // Radio stations: the patterns live in audio.js; these are the names and
 // tempos the HUD shows.

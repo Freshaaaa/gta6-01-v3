@@ -6,9 +6,32 @@
 // prompts, toasts, dialogue boxes, the phone, the garage menu and the
 // title / pause / wasted / busted screens.
 
-import { DISTRICTS, LANDMARKS, WEAPON_ORDER, WEAPONS } from './config.js';
+import { CREW, DISTRICTS, LANDMARKS, WEAPON_ORDER, WEAPONS, crewUnlocked, rankFor } from './config.js';
 import { objectiveText } from './missions.js';
 import { stationDj, stationName, trackName } from './audio.js';
+
+// Dialogue portraits (v13): simple SVG faces, one per speaker — a
+// coloured background, hair, eyes and a smile, drawn as a data URI so
+// no image file is needed. Each speaker gets a distinct look.
+const PORTRAITS = {
+  MARA: { bg: '#e84393', skin: '#e8b98a', hair: '#2c2e50', shirt: '#e74c3c' },
+  VINCE: { bg: '#2c3e50', skin: '#c98d5f', hair: '#7f8c8d', shirt: '#34495e' },
+  ROSA: { bg: '#e67e22', skin: '#f1c27d', hair: '#d5d8dc', shirt: '#f39c12' },
+  DANTE: { bg: '#16a085', skin: '#e8b98a', hair: '#1c1c1c', shirt: '#e74c3c' },
+};
+const PORTRAIT_DEFAULT = { bg: '#7f8c8d', skin: '#e8b98a', hair: '#2c3e50', shirt: '#5d6d7e' };
+function portraitUri(name) {
+  const c = PORTRAITS[name] || PORTRAIT_DEFAULT;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="56" height="56" viewBox="0 0 56 56">`
+    + `<rect width="56" height="56" fill="${c.bg}"/>`
+    + `<rect x="9" y="44" width="38" height="12" rx="6" fill="${c.shirt}"/>`
+    + `<circle cx="28" cy="21" r="13" fill="${c.hair}"/>`
+    + `<circle cx="28" cy="28" r="12" fill="${c.skin}"/>`
+    + `<circle cx="23" cy="28" r="1.8" fill="#1c1c1c"/><circle cx="33" cy="28" r="1.8" fill="#1c1c1c"/>`
+    + `<path d="M23 34 Q28 38 33 34" stroke="#1c1c1c" stroke-width="1.6" fill="none" stroke-linecap="round"/>`
+    + `</svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
 
 function fmtClock(minutes) {
   const h = Math.floor(minutes / 60) % 24;
@@ -37,6 +60,11 @@ export class Hud {
       'police-panel', 'pp-head', 'pp-rows',
       'location-name', 'location-sub', 'wanted-label',
       'weapon-slots', 'car-cond', 'car-cond-fill', 'car-cond-num',
+      // v13: rank panel, in-sight badge, armour bar, stage bar, crew
+      // cards, dialogue portrait.
+      'rank-panel', 'rank-name', 'rank-bar-fill', 'rank-rp', 'rank-day',
+      'in-sight', 'armour-fill', 'armour-num', 'mp-stage-bar',
+      'crew-cards', 'dialogue-portrait',
     ];
     for (const id of ids) this.el[id] = doc.getElementById(id);
     this.last = {};
@@ -68,10 +96,45 @@ export class Hud {
       const col = hp > 50 ? '#2ecc71' : hp > 25 ? '#f39c12' : '#e74c3c';
       if (fill.style.background !== col) fill.style.background = col;
     }
+    // Armour (v13): absorbs damage before health does; bought at the
+    // Hideout shop. The bar sits under health, like the top entries.
+    const armour = Math.max(0, Math.round(p.armour || 0));
+    this.set('armour-num', String(armour));
+    const armourFill = this.el['armour-fill'];
+    if (armourFill) {
+      const w = `${Math.min(100, armour)}%`;
+      if (armourFill.style.width !== w) armourFill.style.width = w;
+    }
+    // Rank panel (v13): rank from real rep (+10/mission, +2/kill) and
+    // the day from real story progress — never invented.
+    const r = rankFor(p.rep || 0);
+    this.set('rank-name', `RANK ${r.rank.letter} · ${r.rank.name}`);
+    const rankFill = this.el['rank-bar-fill'];
+    if (rankFill) {
+      const w = `${Math.round(r.progress * 100)}%`;
+      if (rankFill.style.width !== w) rankFill.style.width = w;
+    }
+    this.set('rank-rp', r.next ? `${Math.floor(p.rep || 0)}/${r.next.min} RP` : `${Math.floor(p.rep || 0)} RP · MAX`);
+    this.set('rank-day', `DAY ${state.day || 1}`);
     // Cash / stars / clock / weather.
     this.set('cash', `$${Math.floor(p.money).toLocaleString('en-US')}`);
     const stars = state.wantedStars || 0;
     this.show(this.el['wanted-label'], stars > 0);
+    // IN SIGHT badge (v13): honest line-of-sight state from police.js.
+    const inSightEl = this.el['in-sight'];
+    if (inSightEl) {
+      if (stars > 0 && state.playerSeen) {
+        this.show(inSightEl, true);
+        this.set('in-sight', '👁 IN SIGHT');
+        inSightEl.style.color = '#ff6b6b';
+      } else if (stars > 0 && state.wantedState === 'escaping') {
+        this.show(inSightEl, true);
+        this.set('in-sight', '🔍 SEARCHING');
+        inSightEl.style.color = '#ffb84d';
+      } else {
+        this.show(inSightEl, false);
+      }
+    }
     const starStr = '★'.repeat(stars) + '☆'.repeat(6 - stars);
     this.set('stars', starStr);
     const starsEl = this.el.stars;
@@ -92,6 +155,20 @@ export class Hud {
     if (m) {
       this.set('mp-mission', `MISSION ${state.missionIndex + 1} · ${m.title.toUpperCase()}`);
       this.set('mp-stage', `STAGE ${state.stepIndex + 1}/${m.steps.length}`);
+      // Stage progress bar (v13): one segment per step — done gold,
+      // current orange, upcoming dim — like the top entries' stage bars.
+      const barEl = this.el['mp-stage-bar'];
+      if (barEl) {
+        let barHtml = '';
+        for (let i = 0; i < m.steps.length; i++) {
+          const cls = i < state.stepIndex ? 'seg done' : i === state.stepIndex ? 'seg cur' : 'seg';
+          barHtml += `<span class="${cls}"></span>`;
+        }
+        if (this.last['mp-stage-bar'] !== barHtml) {
+          this.last['mp-stage-bar'] = barHtml;
+          barEl.innerHTML = barHtml;
+        }
+      }
       this.set('mp-obj', `${m.giver} · Reward $${m.reward.toLocaleString('en-US')}`);
       const next = m.steps[state.stepIndex + 1];
       this.set('mp-next', next ? `NEXT  ${next.label}` : 'NEXT  Finish the job');
@@ -119,16 +196,22 @@ export class Hud {
     this.show(this.el['police-panel'], showPolice);
     if (showPolice) {
       const total = cops.length + (heliOn ? 1 : 0);
-      this.set('pp-head', `🚨 POLICE RESPONSE · ${total} UNIT${total === 1 ? '' : 'S'}`);
+      // Kiki (v13): with the lookout on the crew the board lists every
+      // unit (up to 9) and warns when one is right on the player;
+      // without her it lists the nearest 5, like before.
+      const kikiOn = crewUnlocked(state.missionIndex, state.storyDone).kiki;
+      const maxRows = kikiOn ? 9 : 5;
+      const nearCop = kikiOn && cops.length > 0 && cops[0].d < 25;
+      this.set('pp-head', `🚨 POLICE RESPONSE · ${total} UNIT${total === 1 ? '' : 'S'}${nearCop ? ' · ⚠ COP NEAR' : ''}`);
       const rows = [];
       if (heliOn) {
         rows.push('<div class="pp-row"><span class="pp-name">AIR-1</span><span class="pp-role flk">SPOTLIGHT</span><span class="pp-dist">—</span></div>');
       }
-      for (const { car, d } of cops.slice(0, 5)) {
+      for (const { car, d } of cops.slice(0, maxRows)) {
         const role = d < 15 ? ['RAMMING', 'ram'] : d < 40 ? ['PURSUIT', 'pur'] : d < 100 ? ['FLANKING', 'flk'] : ['RESPONDING', 'resp'];
         rows.push(`<div class="pp-row"><span class="pp-name">${car.callsign || 'SPD'}</span><span class="pp-role ${role[1]}">${role[0]}</span><span class="pp-dist">${Math.round(d)} m</span></div>`);
       }
-      if (cops.length > 5) rows.push(`<div class="pp-row"><span class="pp-name">+${cops.length - 5} more units</span><span></span><span></span></div>`);
+      if (cops.length > maxRows) rows.push(`<div class="pp-row"><span class="pp-name">+${cops.length - maxRows} more units</span><span></span><span></span></div>`);
       const html = rows.join('');
       if (this.last['pp-rows'] !== html) {
         this.last['pp-rows'] = html;
@@ -194,6 +277,23 @@ export class Hud {
     this.set('weapon', w ? w.name : '');
     const ammo = p.ammo[p.weapon];
     this.set('ammo', ammo === Infinity ? '∞' : String(ammo ?? 0));
+    // Crew cards (v13): the three members with their real abilities;
+    // a member who has not joined yet shows greyed with the job that
+    // unlocks them. The unlock state comes from missions completed.
+    const crew = crewUnlocked(state.missionIndex, state.storyDone);
+    const crewHtml = CREW.map((c) => {
+      const on = crew[c.id];
+      const face = `<div class="crew-face" style="background:${c.color}">${c.name[0]}</div>`;
+      const body = on
+        ? `<div><div class="crew-name">${c.name} <span class="crew-role">· ${c.role}</span></div><div class="crew-ability">${c.ability}</div></div>`
+        : `<div><div class="crew-name">${c.name} <span class="crew-role">· ${c.role}</span></div><div class="crew-ability">🔒 ${c.unlockText}</div></div>`;
+      return `<div class="crew-card${on ? '' : ' locked'}">${face}${body}</div>`;
+    }).join('');
+    if (this.last['crew-cards'] !== crewHtml) {
+      this.last['crew-cards'] = crewHtml;
+      const el = this.el['crew-cards'];
+      if (el) el.innerHTML = crewHtml;
+    }
     // Toast.
     const toastEl = this.el.toast;
     if (toastEl) {
@@ -209,11 +309,20 @@ export class Hud {
     // Dialogue.
     const dlg = state.dialogue;
     if (dlg && dlg.length > 0) {
-      this.show(this.el.dialogue, true);
+      const dlgEl = this.el.dialogue;
+      if (dlgEl && dlgEl.style.display !== 'flex') dlgEl.style.display = 'flex';
       const line = dlg[state.dialogueIndex] || '';
       const name = line.split(':')[0] || '';
       this.set('dialogue-name', name);
       this.set('dialogue-text', line);
+      // Portrait (v13): the speaker's SVG face next to the line.
+      const key = name.replace(/ \(.*\)$/, '').toUpperCase();
+      const uri = portraitUri(key);
+      const portraitEl = this.el['dialogue-portrait'];
+      if (portraitEl && this.last['dialogue-portrait'] !== uri) {
+        this.last['dialogue-portrait'] = uri;
+        portraitEl.style.backgroundImage = `url("${uri}")`;
+      }
     } else {
       this.show(this.el.dialogue, false);
     }

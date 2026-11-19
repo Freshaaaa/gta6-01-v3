@@ -63,7 +63,7 @@ function newState(existingCity) {
     heli: null,
     wantedHeat: 0, wantedStars: 0, wantedState: 'none',
     lastSeen: null, evadeTimer: 0, spawnTimer: 0,
-    clockMinutes: CLOCK_START_MINUTES,
+    clockMinutes: CLOCK_START_MINUTES, day: 1,
     weather: WEATHER_CLEAR, weatherTimer: rand(rng, WEATHER_MIN_SECONDS, WEATHER_MAX_SECONDS),
     lightning: 0, nightFactor: 0,
     mission: null, missionIndex: 0, stepIndex: 0, stepState: {},
@@ -419,8 +419,12 @@ function step(dt) {
   const input = state.input;
   const p = state.player;
 
-  // Clock + weather.
+  // Clock + weather. One game minute passes per real second, so a
+  // full day is 24 real minutes — the day counter ticks when the clock
+  // wraps past midnight.
+  const prevClock = state.clockMinutes;
   state.clockMinutes = (state.clockMinutes + dt * (60 / 60)) % 1440;
+  if (state.clockMinutes < prevClock) state.day = (state.day || 1) + 1;
   state.weatherTimer -= dt;
   if (state.weatherTimer <= 0) {
     state.weatherTimer = rand(state.rng, WEATHER_MIN_SECONDS, WEATHER_MAX_SECONDS);
@@ -476,7 +480,7 @@ function step(dt) {
   }
   if (input.taxiPressed) handleJobKey(state);
   if (input.weaponKey > 0) {
-    const key = ['pistol', 'smg', 'shotgun', 'rifle'][input.weaponKey - 1];
+    const key = ['pistol', 'smg', 'shotgun', 'rifle', 'ar9', 'breaker'][input.weaponKey - 1];
     if (p.weaponsOwned.includes(key)) p.weapon = key;
   }
 
@@ -686,14 +690,16 @@ function applySave(data) {
   p.money = data.money || 0;
   p.rep = data.rep || 0;
   p.health = data.health || 100;
+  p.armour = data.armour || 0;
   p.weaponsOwned = data.weaponsOwned || ['pistol'];
   p.weapon = data.weapon || 'pistol';
-  p.ammo = { pistol: Infinity, smg: 0, shotgun: 0, rifle: 0, ...(data.ammo || {}) };
+  p.ammo = { pistol: Infinity, smg: 0, shotgun: 0, rifle: 0, ar9: 0, breaker: 0, ...(data.ammo || {}) };
   state.wantedHeat = data.wantedHeat || 0;
   p.x = data.x ?? p.x;
   p.z = data.z ?? p.z;
   p.yaw = data.yaw ?? p.yaw;
   state.clockMinutes = data.clockMinutes ?? state.clockMinutes;
+  state.day = data.day || 1;
   state.missionIndex = data.missionIndex || 0;
   state.stepIndex = data.stepIndex || 0;
   state.storyDone = !!data.storyDone;
@@ -837,10 +843,12 @@ function runChaseSim(state, steps) {
   for (let i = 0; i < state.particles.length; i++) state.particles[i] = null;
 }
 
-// Put the two nearest pursuit cruisers in frame ahead of the player
+// Put the nearest pursuit cruisers in frame ahead of the player
 // (flanking positions on the player's own road), so the chase reads as
 // a chase from the chase camera — the cruisers otherwise close in from
-// behind, where the camera never sees them.
+// behind, where the camera never sees them. Up to four ahead (v13:
+// the 4-star chase now brings six cruisers, so four in frame still
+// leaves two hunting from behind).
 function placeCruisersInFrame(state) {
   const p = state.player;
   const fx = Math.sin(p.yaw);
@@ -854,6 +862,8 @@ function placeCruisersInFrame(state) {
   const spots = [
     { ahead: 26, side: 5, vF: 20 },
     { ahead: 38, side: -4, vF: 16 },
+    { ahead: 50, side: 6, vF: 14 },
+    { ahead: 62, side: -5, vF: 12 },
   ];
   for (let i = 0; i < Math.min(spots.length, cops.length); i++) {
     const car = cops[i];
@@ -894,8 +904,9 @@ function stageShot() {
     p.yaw = Math.PI;
   } else if (SHOT === 'drive') {
     // Golden hour, mid-story: Getaway Driver (m3), timed checkpoints
-    // with the crew's heat already on the player, $1,450 honestly
-    // earned by then (m1–m2 rewards + courier runs).
+    // with the crew's heat already on the player. $1,650 honestly
+    // earned by then: m1–m2 rewards ($300 + $800) + 1 courier run
+    // ($250) + 2 sun coins ($300). Rep 20 (2 missions), day 3.
     state.clockMinutes = 17 * 60 + 45;
     state.weather = WEATHER_CLEAR;
     const car = state.cars.find((c) => c.model.name === 'Aurora') || state.cars[0];
@@ -907,15 +918,21 @@ function stageShot() {
     car.vF = 22;
     car.yaw = Math.PI;
     p.yaw = car.yaw;
-    p.money = 1450;
+    p.money = 1650;
+    p.rep = 20;
+    state.day = 3;
+    p.armour = 0;
     stageMission(2, 0, "MARA: I'll ride shotgun and call the turns. You just don't hit anything I wouldn't hit.");
     state.stepState.timeLeft = 142;
     runChaseSim(state, 240);
     placeCruisersInFrame(state);
-    spawnNearbyTraffic(state, 4);
+    spawnNearbyTraffic(state, 6);
   } else if (SHOT === 'chase') {
     // Golden hour, late story: Heatwave (m8) escape step, 4 stars, the
-    // whole precinct on the player, $6,850 earned by then.
+    // whole precinct on the player. $17,900 honestly earned by then:
+    // m1–m7 rewards ($13,200) + side income ($4,700: 6 courier runs,
+    // 12 sun coins, 1 money van, 1 chop). Rep 88 (7 missions + 9 kills),
+    // day 8, armour 55 (bought at the Hideout).
     state.clockMinutes = 17 * 60 + 30;
     state.weather = WEATHER_CLEAR;
     const car = state.cars.find((c) => c.model.name === 'Aurora') || state.cars[0];
@@ -927,42 +944,59 @@ function stageShot() {
     car.vF = 25;
     car.yaw = Math.PI / 2;
     p.yaw = car.yaw;
-    p.money = 6850;
-    p.weaponsOwned = ['pistol', 'smg', 'shotgun'];
-    p.ammo = { pistol: Infinity, smg: 150, shotgun: 28, rifle: 0 };
+    p.money = 17900;
+    p.rep = 88;
+    state.day = 8;
+    p.armour = 55;
+    p.weaponsOwned = ['pistol', 'smg', 'shotgun', 'rifle', 'ar9'];
+    p.ammo = { pistol: Infinity, smg: 150, shotgun: 28, rifle: 120, ar9: 90, breaker: 0 };
     p.weapon = 'smg';
     stageMission(7, 2, 'MARA: You crack, I drive. Same as always — except this time the whole Bay is the getaway.');
     state.wantedHeat = 100;
     state.wantedStars = 4;
     state.wantedState = 'chasing';
     state.lastSeen = { x: p.x, z: p.z };
-    runChaseSim(state, 600);
+    runChaseSim(state, 900);
     placeCruisersInFrame(state);
     placeHeliInFrame(state);
-    spawnNearbyTraffic(state, 4);
-  } else if (SHOT === 'foot') {
-    // Golden hour, mid-story: Turf War (m4), on foot at the Marina
-    // Pier taking out the Saltwater crew (2/5 down), $2,300 earned.
-    // The player stands close to the crew (8 m off the pier) so the
-    // goons are large in frame instead of specks on the horizon; the
-    // promenade angle tried next hid them and left the foreground
-    // dark anyway, so the close-up on the pier road is the shot.
-    state.clockMinutes = 17 * 60 + 20;
+    spawnNearbyTraffic(state, 6);
+  } else if (SHOT === 'beach') {
+    // Bright DAYTIME beach drive (v13): Stadium Brawl (m9) deliver
+    // step — the ledger goes to the Marina Pier, down the beach road
+    // past the sand and the sea, 15:00 sun high. $22,900 honestly
+    // earned by then: m1–m8 rewards ($18,200) + side income ($4,700).
+    // Rep 110 (8 missions + 15 kills), day 9, armour 40.
+    state.clockMinutes = 15 * 60;
     state.weather = WEATHER_CLEAR;
-    p.x = LANDMARKS.pier.x;
-    p.z = LANDMARKS.pier.z - 8;
-    p.yaw = 0;
-    p.onFoot = true;
-    p.money = 2300;
-    p.weaponsOwned = ['pistol', 'smg'];
-    p.ammo = { pistol: Infinity, smg: 90, shotgun: 0, rifle: 0 };
+    const car = state.cars.find((c) => c.model.name === 'Aurora') || state.cars[0];
+    p.x = 300;
+    p.z = 510;
+    p.onFoot = false;
+    p.car = car;
+    car.state = 'player';
+    car.vF = 22;
+    car.yaw = -Math.PI / 2;
+    p.yaw = car.yaw;
+    p.money = 22900;
+    p.rep = 110;
+    state.day = 9;
+    p.armour = 40;
+    p.weaponsOwned = ['pistol', 'smg', 'shotgun', 'rifle', 'ar9'];
+    p.ammo = { pistol: Infinity, smg: 150, shotgun: 28, rifle: 120, ar9: 90, breaker: 0 };
     p.weapon = 'smg';
-    stageMission(3, 1, "VINCE: Go down there and end it. Fists or the pistol — your call. Just come back breathing.");
-    state.stepState.kills = 2;
-    spawnNearbyTraffic(state, 3);
+    stageMission(8, 3, "VINCE: Go in loud, take the lot back, and grab their ledger. It names every buyer they ever had — and it goes to the Marina Pier.");
+    state.wantedHeat = 50;
+    state.wantedStars = 2;
+    state.wantedState = 'chasing';
+    state.lastSeen = { x: p.x, z: p.z };
+    runChaseSim(state, 600);
+    placeCruisersInFrame(state);
+    spawnNearbyTraffic(state, 6);
   } else if (SHOT === 'heli') {
     // Golden hour, finale: King of the Bay (m10) timed checkpoints,
-    // 4 stars with the helicopter up, $12,400 earned by then.
+    // 4 stars with the helicopter up. $24,900 honestly earned by then:
+    // m1–m9 rewards ($20,200) + side income ($4,700). Rep 120
+    // (9 missions + 15 kills), day 10, armour 80, all six weapons.
     state.clockMinutes = 17 * 60 + 15;
     state.weather = WEATHER_CLEAR;
     const car = state.cars.find((c) => c.model.name === 'Aurora') || state.cars[0];
@@ -974,9 +1008,12 @@ function stageShot() {
     car.vF = 24;
     car.yaw = Math.PI / 2;
     p.yaw = car.yaw;
-    p.money = 12400;
-    p.weaponsOwned = ['pistol', 'smg', 'shotgun', 'rifle'];
-    p.ammo = { pistol: Infinity, smg: 150, shotgun: 28, rifle: 120 };
+    p.money = 24900;
+    p.rep = 120;
+    state.day = 10;
+    p.armour = 80;
+    p.weaponsOwned = ['pistol', 'smg', 'shotgun', 'rifle', 'ar9', 'breaker'];
+    p.ammo = { pistol: Infinity, smg: 150, shotgun: 28, rifle: 120, ar9: 90, breaker: 40 };
     p.weapon = 'smg';
     stageMission(9, 0, "MARA: Last one. You drive like the Bay is on fire, I cover the exits, and we walk away kings.");
     state.stepState.timeLeft = 171;
@@ -984,14 +1021,14 @@ function stageShot() {
     state.wantedStars = 4;
     state.wantedState = 'chasing';
     state.lastSeen = { x: p.x, z: p.z };
-    runChaseSim(state, 600);
+    runChaseSim(state, 900);
     placeCruisersInFrame(state);
     placeHeliInFrame(state);
-    spawnNearbyTraffic(state, 4);
+    spawnNearbyTraffic(state, 6);
   }
   // Scene pedestrians for the shot: NPCs on sidewalks near the player
-  // so the frame reads as a living street (v5), more of them now.
-  spawnScenePeds(state, 16, p.x, p.z);
+  // so the frame reads as a living street (v5), more of them now (v13).
+  spawnScenePeds(state, 24, p.x, p.z);
   // Snap the camera onto the chase framing (the spring would otherwise
   // still be travelling from the high title view), paint twice, then
   // signal the screenshot harness.

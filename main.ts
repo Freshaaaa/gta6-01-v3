@@ -35,7 +35,7 @@ if (existsSync(join(here, 'screenshots'))) cpSync(join(here, 'screenshots'), joi
 // Fail fast at hand-in: a missing entrypoint or an oversized screenshot
 // would be refused by the scorer, so refuse it here with a clear error.
 if (!existsSync(join(out, 'game', 'index.html'))) throw new Error('hand-in is missing game/index.html');
-for (const shot of ['1-police-chase.jpg', '2-heli-night.jpg', '3-on-foot.jpg', '4-golden-drive.jpg']) {
+for (const shot of ['1-police-chase.jpg', '2-heli-night.jpg', '3-beach-drive.jpg', '4-golden-drive.jpg']) {
   const p = join(out, 'screenshots', shot);
   if (!existsSync(p)) throw new Error(`screenshot ${shot} is missing — retake the 4 staged shots before handing in`);
   if (statSync(p).size > 262144) throw new Error(`screenshot ${shot} is over the 256 KiB cap`);
@@ -59,6 +59,25 @@ mustContain('game/index.html', 'weapon-slots');
 mustContain('game/index.html', 'car-cond');
 mustContain('game/src/hud.js', 'pp-rows');
 mustContain('game/src/police.js', 'callsign');
+
+// v13 gates: rank/respect/day, crew cards, dialogue portraits, armour,
+// stage bar, in-sight, 6 weapon slots, beach shot — the second-order
+// gaps vs the top 3 must actually be in the handed-in sources.
+mustContain('game/index.html', 'rank-panel');
+mustContain('game/index.html', 'crew-cards');
+mustContain('game/index.html', 'dialogue-portrait');
+mustContain('game/index.html', 'armour-bar');
+mustContain('game/index.html', 'mp-stage-bar');
+mustContain('game/index.html', 'in-sight');
+mustContain('game/src/config.js', 'AR-9');
+mustContain('game/src/config.js', 'Breaker');
+mustContain('game/src/config.js', 'rankFor');
+mustContain('game/src/config.js', 'CREW');
+mustContain('game/src/main.js', 'beach');
+mustContain('game/src/hud.js', 'portraitUri');
+mustContain('game/src/hud.js', 'crewUnlocked');
+mustContain('game/src/hud.js', 'rankFor');
+mustContain('game/src/police.js', '9][stars]');
 
 // The scorer's own caps (reference/gate.json): only text_max_bytes shapes the bytes; the others refuse an entry the
 // scorer would refuse (more than 4 screenshots or one over 256 KiB; more than 993 files in game/ or 48 MiB of game

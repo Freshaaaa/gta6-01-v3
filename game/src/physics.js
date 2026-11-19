@@ -18,9 +18,14 @@ import { clamp, lerp } from './rng.js';
  */
 export function stepCar(car, dt, slick) {
   const m = car.model;
-  const maxSpeed = 42 * m.maxSpeed;
+  // Mara's driving (v13): when the crew driver rides along, the
+  // player's car is faster and turns sharper. The flag lives on the
+  // car (set by updateCars); police and traffic never get it.
+  const boost = car.crewBoost ? 1.1 : 1;
+  const turnBoost = car.crewBoost ? 1.15 : 1;
+  const maxSpeed = 42 * m.maxSpeed * boost;
   const accel = 9.5 * m.accel;
-  const steerMax = 0.62 * (1 - 0.45 * clamp(Math.abs(car.vF) / maxSpeed, 0, 1)) * m.turn;
+  const steerMax = 0.62 * (1 - 0.45 * clamp(Math.abs(car.vF) / maxSpeed, 0, 1)) * m.turn * turnBoost;
 
   // Steering eases toward the input; faster at low speed, lazier at speed.
   const steerRate = 6 * (1 - 0.35 * clamp(Math.abs(car.vF) / maxSpeed, 0, 1));

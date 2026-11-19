@@ -8,7 +8,7 @@
 
 import {
   CAR_MODELS, PED_PANTS, PED_SHIRTS, PED_SKINS, PLAYER_MAX_HEALTH,
-  PLAYER_RADIUS, PLAYER_RUN_SPEED, PLAYER_WALK_SPEED, PED_TOPUP_MIN,
+  PLAYER_RADIUS, PLAYER_RUN_SPEED, PLAYER_WALK_SPEED, PED_TOPUP_MIN, crewUnlocked,
   ROAD_WIDTH, WEAPONS, WORLD_SIZE,
 } from './config.js';
 import { collideCarBuildings, collideCars, collideFootBuildings, stepCar } from './physics.js';
@@ -22,8 +22,8 @@ export function createPlayer(x, z) {
   return {
     x, z, yaw: Math.PI, onFoot: true, car: null, health: PLAYER_MAX_HEALTH,
     walkPhase: 0, moving: false, speed: 0, aimX: x, aimZ: z + 5,
-    firing: false, fireCooldown: 0, weapon: 'pistol', ammo: { pistol: Infinity, smg: 0, shotgun: 0, rifle: 0 },
-    weaponsOwned: ['pistol'], money: 0, rep: 0, punchCooldown: 0,
+    firing: false, fireCooldown: 0, weapon: 'pistol', ammo: { pistol: Infinity, smg: 0, shotgun: 0, rifle: 0, ar9: 0, breaker: 0 },
+    weaponsOwned: ['pistol'], money: 0, rep: 0, armour: 0, punchCooldown: 0,
     mouseMovedAt: -10, bustedTimer: 0,
   };
 }
@@ -397,7 +397,11 @@ export function explodeCar(state, car) {
 
 export function hurtPlayer(state, amount) {
   const p = state.player;
-  p.health -= amount;
+  // Body armour (v13) absorbs damage before health does — a real
+  // mechanic, not a display number: buy it at the Hideout shop.
+  const absorbed = Math.min(p.armour || 0, amount);
+  p.armour = (p.armour || 0) - absorbed;
+  p.health -= (amount - absorbed);
   if (p.health <= 0) {
     p.health = 0;
     state.mode = 'wasted';
@@ -800,6 +804,10 @@ export function updateGoons(state, dt) {
 
 export function updateCars(state, dt) {
   const slick = state.weather === 'storm' ? 1.6 : state.weather === 'rain' ? 1.3 : 1;
+  // Crew (v13): Mara's driving and Lio's repairs are real mechanics,
+  // not flavour text — they only apply once the crew member has
+  // actually joined (see crewUnlocked in config.js).
+  const crew = crewUnlocked(state.missionIndex, state.storyDone);
   for (const car of state.cars) {
     if (car.state === 'wreck') continue;
     if (car.state === 'burning') {
@@ -822,6 +830,10 @@ export function updateCars(state, dt) {
     const prevX = car.x;
     const prevZ = car.z;
     const prevVF = car.vF;
+    car.crewBoost = car === state.player.car && crew.mara;
+    if (car === state.player.car && crew.lio && car.state !== 'wreck' && car.state !== 'burning' && car.hp < car.maxHp) {
+      car.hp = Math.min(car.maxHp, car.hp + 3 * dt);
+    }
     stepCar(car, dt, slick);
     car.wheelSpin += (car.vF / 0.34) * dt;
     car.accelVis = (car.vF - prevVF) / dt;

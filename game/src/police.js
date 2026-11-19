@@ -17,14 +17,18 @@ import { spawnCar, spawnGoon, addWantedHeat, hurtPlayer, addTracer } from './ent
 import { sfxBusted } from './audio.js';
 
 function policeCountFor(stars) {
-  return [0, 1, 2, 3, 4, 5, 5][stars] || 0;
+  // v13: a 4-star chase now brings 6 cruisers (plus the heli), and a
+  // full 6-star manhunt brings 9 — the way the top entries' dispatch
+  // boards read. The escape test still passes: the cops search the
+  // last-seen spot, they never magically know where the player hides.
+  return [0, 2, 3, 4, 6, 8, 9][stars] || 0;
 }
 
 // Solmar PD unit callsigns (invented for this game, one per cruiser,
 // assigned in spawn order so the HUD's police-response list can name
 // each unit — "GULL-2 · RAMMING · 24 m" — the way a real dispatch board
 // does. Numbers keep rising through the session; names never repeat in
-// one chase because the pool is longer than the max 5 cruisers.
+// one chase because the pool is longer than the max 9 cruisers.
 const CALLSIGN_WORDS = ['GULL', 'TIDE', 'REEF', 'PIER', 'DOCK', 'PALM', 'BAY', 'HARBOR', 'STRIP', 'SURF'];
 
 function nextCallsign(state) {

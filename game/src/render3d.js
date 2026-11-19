@@ -8,7 +8,7 @@
 // state and paints it.
 
 import * as THREE from 'three';
-import { DISTRICTS, WORLD_SIZE, ROAD_WIDTH, ROAD_GAP, ROAD_FIRST, ROAD_COUNT, LANDMARKS } from './config.js';
+import { DISTRICTS, WORLD_SIZE, ROAD_WIDTH, ROAD_GAP, ROAD_FIRST, ROAD_COUNT, LANDMARKS, crewUnlocked } from './config.js';
 import { clamp, lerp } from './rng.js';
 import { gpsRoute } from './city.js';
 
@@ -1454,10 +1454,15 @@ export class Board {
       g.textBaseline = 'middle';
       g.fillText('$', (state.van.x - px) * scale, (state.van.z - pz) * scale);
     }
-    // Police (blue dots, flashing red while chasing).
+    // Police (blue dots, flashing red while chasing). Kiki's lookout
+    // ability (v13) is real here: without her on the crew only the
+    // cruisers within 60 m show — with her, every unit in range does.
+    const kikiOn = crewUnlocked(state.missionIndex, state.storyDone).kiki;
     const flash = Math.floor(performance.now() / 300) % 2 === 0;
     for (const car of state.cars) {
       if (!car.police) continue;
+      const d = Math.hypot(car.x - px, car.z - pz);
+      if (!kikiOn && d > 60) continue;
       g.fillStyle = state.wantedStars > 0 && flash ? '#ff4444' : '#4488ff';
       g.beginPath();
       g.arc((car.x - px) * scale, (car.z - pz) * scale, 3.5, 0, Math.PI * 2);

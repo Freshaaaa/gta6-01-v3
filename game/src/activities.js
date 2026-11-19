@@ -2,17 +2,17 @@
 // missions lives here: taxi fares, street races, sun-coin collectibles
 // (see entities.js), the docks chop shop, the Hideout weapon shop,
 // the money-van heist (an armored van that roams the city — crack it on
-// foot for $500), the safehouse/garage (store and upgrade cars, save and
+// foot for $800), the safehouse/garage (store and upgrade cars, save and
 // heal), respray and outfit shops, and the in-game phone's social feed.
 // Each function works directly on the shared `state` object that main.js
 // owns; toasts are set with state.toast + state.toastTimer the same way
 // main.js does it.
 
 import {
-  CHOP_MODELS, CHOP_REWARD, GARAGE_ARMOR_PRICE, GARAGE_ENGINE_PRICE,
-  GARAGE_MAX_CARS, GARAGE_PAINT_PRICE, LANDMARKS, OUTFIT_PRICE, PAINT_COLORS,
+  ARMOUR_AMOUNT, ARMOUR_PRICE, CHOP_MODELS, CHOP_REWARD, GARAGE_ARMOR_PRICE, GARAGE_ENGINE_PRICE,
+  GARAGE_MAX_CARS, GARAGE_PAINT_PRICE, LANDMARKS, OUTFIT_PRICE, PAINT_COLORS, PLAYER_MAX_ARMOUR,
   RESPRAY_PRICE, VAN_CRACK_SECONDS, VAN_FIRST_DELAY, VAN_HEAT, VAN_MAX_DELAY,
-  VAN_MIN_DELAY, VAN_REWARD, WEAPON_ORDER, WEAPONS,
+  VAN_MIN_DELAY, VAN_REWARD, WEAPON_ORDER, WEAPON_UNLOCK_MISSION, WEAPONS,
 } from './config.js';
 import { addWantedHeat, spawnCar } from './entities.js';
 import { dist2, pick, rand } from './rng.js';
@@ -217,15 +217,22 @@ export function tryChop(state) {
 // ---- weapon shop (Hideout) ----
 
 export function shopCycle(state) {
-  // Cycles SMG -> shotgun -> rifle -> ammo/outfit; each E press buys the next.
-  const order = ['smg', 'shotgun', 'rifle'];
-  const idx = state.shopCycle % 4;
+  // Cycles SMG -> shotgun -> rifle -> AR-9 -> Breaker -> body armour ->
+  // ammo; each E press buys the next. The late weapons are gated by
+  // story progress (AR-9 after Getaway Driver, Breaker after Heatwave),
+  // so a slot that shows LOCKED in the HUD is honestly locked.
+  const order = ['smg', 'shotgun', 'rifle', 'ar9', 'breaker'];
+  const idx = state.shopCycle % 7;
   const p = state.player;
-  if (idx < 3) {
+  if (idx < 5) {
     const key = order[idx];
     const w = WEAPONS[key];
+    const unlockAt = WEAPON_UNLOCK_MISSION[key] || 0;
     if (p.weaponsOwned.includes(key)) {
       state.toast = `You already own the ${w.name}.`;
+    } else if (state.missionIndex < unlockAt && !state.storyDone) {
+      const job = unlockAt === 3 ? 'Getaway Driver' : 'Heatwave';
+      state.toast = `The ${w.name} unlocks after the ${job} job.`;
     } else if (p.money < w.price) {
       state.toast = `The ${w.name} costs $${w.price} — you have $${p.money}.`;
     } else {
@@ -235,6 +242,18 @@ export function shopCycle(state) {
       p.weapon = key;
       sfxCash();
       state.toast = `Bought the ${w.name}! Press ${idx + 2} to use it.`;
+    }
+  } else if (idx === 5) {
+    // Body armour: $300 for +50 armour (caps at 100).
+    if ((p.armour || 0) >= PLAYER_MAX_ARMOUR) {
+      state.toast = 'Your armour is already full.';
+    } else if (p.money < ARMOUR_PRICE) {
+      state.toast = `Body armour costs $${ARMOUR_PRICE} — you have $${p.money}.`;
+    } else {
+      p.money -= ARMOUR_PRICE;
+      p.armour = Math.min(PLAYER_MAX_ARMOUR, (p.armour || 0) + ARMOUR_AMOUNT);
+      sfxCash();
+      state.toast = `Body armour +${ARMOUR_AMOUNT}.`;
     }
   } else {
     // Ammo + outfit: $50 for 60 rounds of the current weapon, or an outfit.

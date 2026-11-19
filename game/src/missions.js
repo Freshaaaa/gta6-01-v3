@@ -30,7 +30,7 @@ export const MISSIONS = [
     id: 'm1',
     title: 'First Wheels',
     giver: "Rosa — Rosa's Diner",
-    reward: 150,
+    reward: 300,
     briefing: [
       "ROSA: Dante Reyes! Back in Solmar Bay and already flat broke, I see.",
       "ROSA: The diner needs wheels and the lunch crowd took every parking spot. Borrow a car — nobody round here locks theirs.",
@@ -46,7 +46,7 @@ export const MISSIONS = [
       { type: 'goto', x: LANDMARKS.diner.x, z: LANDMARKS.diner.z, radius: 14, inCar: true, label: 'Drive the car back to the diner' },
     ],
     complete: [
-      "ROSA: Smooth. $150, and you didn't even scratch the paint.",
+      "ROSA: Smooth. $300, and you didn't even scratch the paint.",
       "MARA: Not bad, Reyes. Next time I drive, you shoot. That's the deal.",
       "VINCE (phone): Rosa says you can drive. Come see me at the Hideout — I've got real work.",
     ],
@@ -55,7 +55,7 @@ export const MISSIONS = [
     id: 'm2',
     title: 'The Pickup',
     giver: 'Vince Corso',
-    reward: 400,
+    reward: 800,
     briefing: [
       'VINCE: A crate came in on the night boat. Mine, not the Saltwaters\', and they know it.',
       'VINCE: Pick it up at the Old Harbor Docks and bring it to the Hideout. Cops see you carrying it, they ask questions.',
@@ -66,7 +66,7 @@ export const MISSIONS = [
       { type: 'deliver', x: LANDMARKS.hideout.x, z: LANDMARKS.hideout.z, radius: 14, label: 'Deliver the crate to the Hideout' },
     ],
     complete: [
-      "VINCE: The crate's safe. $400. You're earning a name, Dante.",
+      "VINCE: The crate's safe. $800. You're earning a name, Dante.",
       'VINCE: The Saltwaters won\'t forget this. Keep your eyes on the pier.',
     ],
   },
@@ -74,7 +74,7 @@ export const MISSIONS = [
     id: 'm3',
     title: 'Getaway Driver',
     giver: 'Vince Corso',
-    reward: 600,
+    reward: 1200,
     briefing: [
       'VINCE: My crew hit a warehouse in Downtown and the whole precinct is rolling in. They need a wheelman — you.',
       'MARA: I\'ll ride shotgun and call the turns. You just don\'t hit anything I wouldn\'t hit.',
@@ -92,14 +92,14 @@ export const MISSIONS = [
     complete: [
       "VINCE: Beautiful driving. The crew's free and the cops are chasing ghosts.",
       "MARA: Told you. Best wheelman in the Bay — and I was the one reading the map.",
-      'VINCE: $600. And a warning — the Saltwaters are massing at the Marina Pier.',
+      'VINCE: $1,200. And a warning — the Saltwaters are massing at the Marina Pier.',
     ],
   },
   {
     id: 'm4',
     title: 'Turf War',
     giver: 'Vince Corso',
-    reward: 800,
+    reward: 1800,
     briefing: [
       'VINCE: The Saltwater crew is moving on the Marina Pier tonight. Five of them, armed, claiming my turf.',
       'VINCE: Go down there and end it. Fists or the pistol — your call. Just come back breathing.',
@@ -110,7 +110,7 @@ export const MISSIONS = [
       { type: 'goto', x: LANDMARKS.hideout.x, z: LANDMARKS.hideout.z, radius: 14, label: 'Report back to the Hideout' },
     ],
     complete: [
-      'VINCE: The pier is ours again. $800, and the Saltwaters will think twice next time.',
+      'VINCE: The pier is ours again. $1,800, and the Saltwaters will think twice next time.',
       'VINCE: One more job after this, Dante. The big one. The Bank of Solmar.',
     ],
   },
@@ -118,7 +118,7 @@ export const MISSIONS = [
     id: 'm5',
     title: 'The Big Score',
     giver: 'Vince Corso',
-    reward: 2000,
+    reward: 4500,
     briefing: [
       'VINCE: The Bank of Solmar moves its weekend take on Friday. One vault, one bag, one fast car.',
       "MARA: I'll be in the car out front, engine running, radio on. You bring the bag, I bring the speed.",
@@ -130,7 +130,7 @@ export const MISSIONS = [
       { type: 'deliver', x: LANDMARKS.hideout.x, z: LANDMARKS.hideout.z, radius: 14, label: 'Escape! Deliver the bag to the Hideout' },
     ],
     complete: [
-      "VINCE: Two thousand dollars of clean getaway. The whole Bay is talking about you, Dante.",
+      "VINCE: Four and a half thousand dollars of clean getaway. The whole Bay is talking about you, Dante.",
       "MARA: And about the driver who kept the cops off your bumper the whole way.",
       "ROSA: Dinner's on me tonight. You earned it, wheelman.",
     ],
@@ -139,7 +139,7 @@ export const MISSIONS = [
     id: 'm6',
     title: 'Static',
     giver: 'Vince Corso',
-    reward: 900,
+    reward: 2000,
     briefing: [
       'VINCE: The Saltwaters didn\'t learn at the pier. Now they\'re squatting on the City Hall lot, waving guns at council staff.',
       'VINCE: Clear them out before the mayor calls the state police. Four of them, tops — and Dante? Make it loud.',
@@ -150,7 +150,7 @@ export const MISSIONS = [
       { type: 'goto', x: LANDMARKS.hideout.x, z: LANDMARKS.hideout.z, radius: 14, label: 'Report back to the Hideout' },
     ],
     complete: [
-      'VINCE: City Hall is quiet again. The mayor owes me a favour now — $900 for you.',
+      'VINCE: City Hall is quiet again. The mayor owes me a favour now — $2,000 for you.',
       'VINCE: Rosa\'s got a client asking for a fast car. Talk to her when you\'re ready.',
     ],
   },
@@ -158,17 +158,17 @@ export const MISSIONS = [
     id: 'm7',
     title: 'Chop Shop',
     giver: "Rosa — Rosa's Diner",
-    reward: 700,
+    reward: 1600,
     briefing: [
       "ROSA: A client of mine collects fast cars and pays cash, no questions. He wants a Strada — red, quick, the one everybody stares at.",
-      'ROSA: Lift one anywhere in the city and drop it at the docks. The chop crew will take it from there. $700.',
+      'ROSA: Lift one anywhere in the city and drop it at the docks. The chop crew will take it from there. $1,600.',
     ],
     steps: [
       { type: 'stealModel', model: 'Strada', label: 'Steal a Strada — any Strada will do' },
       { type: 'deliver', x: LANDMARKS.docks.x, z: LANDMARKS.docks.z, radius: 14, label: 'Deliver the Strada to the docks (chop shop)' },
     ],
     complete: [
-      'ROSA: The client loves it. $700, and he says he\'ll call again when he wants something faster.',
+      'ROSA: The client loves it. $1,600, and he says he\'ll call again when he wants something faster.',
       'VINCE (phone): One last job, Dante. The Grand Casino. Tonight. Bring your best driving.',
     ],
   },
@@ -176,7 +176,7 @@ export const MISSIONS = [
     id: 'm8',
     title: 'Heatwave',
     giver: 'Vince Corso',
-    reward: 3000,
+    reward: 5000,
     briefing: [
       'VINCE: The Grand Casino keeps its Friday take in a safe behind the floor. Tonight the whole city is watching the fireworks — nobody watches the safe.',
       "MARA: You crack, I drive. Same as always — except this time the whole Bay is the getaway.",
@@ -188,7 +188,7 @@ export const MISSIONS = [
       { type: 'escape', x: LANDMARKS.hideout.x, z: LANDMARKS.hideout.z, radius: 14, label: 'Lose the cops, then reach the Hideout' },
     ],
     complete: [
-      'VINCE: Three thousand dollars. The casino, the bank, the pier — the whole Bay is yours now, Dante.',
+      'VINCE: Five thousand dollars. The casino, the bank, the pier — the whole Bay is yours now, Dante.',
       "MARA: Ours. Don't forget who was in the passenger seat.",
       "ROSA: The diner's renaming the special after you. The Dante: extra hot, gone in sixty seconds.",
       'VINCE (phone): Enjoy it while it lasts. The Saltwaters are regrouping at the Stadium — I\'ll call.',
@@ -198,7 +198,7 @@ export const MISSIONS = [
     id: 'm9',
     title: 'Stadium Brawl',
     giver: 'Vince Corso',
-    reward: 1200,
+    reward: 2000,
     briefing: [
       'VINCE: The Saltwaters are running a chop ring out of Solmar Stadium — six of them, armed, stripping fast cars in the lot.',
       'VINCE: Go in loud, take the lot back, and grab their ledger. It names every buyer they ever had — and it goes to the Marina Pier.',
@@ -211,14 +211,14 @@ export const MISSIONS = [
     ],
     complete: [
       'VINCE: The ledger is gold, Dante. Every Saltwater buyer in the Bay, in one book.',
-      'VINCE: $1,200. One job left, and it ends this — the boss himself, at the Lighthouse.',
+      'VINCE: $2,000. One job left, and it ends this — the boss himself, at the Lighthouse.',
     ],
   },
   {
     id: 'm10',
     title: 'King of the Bay',
     giver: 'Vince Corso',
-    reward: 4000,
+    reward: 8000,
     briefing: [
       'VINCE: The Saltwater boss is fleeing by boat from the Lighthouse — his whole cut of the Bay in one duffel bag, sitting in the keeper\'s hut.',
       "MARA: Last one. You drive like the Bay is on fire, I cover the exits, and we walk away kings.",
@@ -235,7 +235,7 @@ export const MISSIONS = [
       { type: 'escape', x: LANDMARKS.hideout.x, z: LANDMARKS.hideout.z, radius: 14, label: 'Lose the cops, then reach the Hideout' },
     ],
     complete: [
-      'VINCE: Four thousand dollars. The boss is gone, the crew is yours, the Bay is yours.',
+      'VINCE: Eight thousand dollars. The boss is gone, the crew is yours, the Bay is yours.',
       "MARA: The Bay is OURS, Dante. Don't make me correct you in front of the crew again.",
       "ROSA: The Dante special is on the house tonight. Forever.",
       'STORY COMPLETE — Solmar Bay is yours. Courier jobs keep paying at the Hideout.',
@@ -251,15 +251,15 @@ export function makeCourierJob(rng, index) {
     id: `courier-${index}`,
     title: 'Courier Run',
     giver: 'Rosa — side job',
-    reward: 120,
-    briefing: [`ROSA: A parcel needs to reach ${dest.name}. $120 if it gets there in one piece.`],
+    reward: 250,
+    briefing: [`ROSA: A parcel needs to reach ${dest.name}. $250 if it gets there in one piece.`],
     steps: [
       // The parcel starts at Rosa's Diner (she hands it over) so the
       // pickup never collides with the Hideout weapon shop's E prompt.
       { type: 'pickup', x: LANDMARKS.diner.x, z: LANDMARKS.diner.z, radius: 11, label: 'Pick up the parcel at the Diner (E)' },
       { type: 'deliver', x: dest.x, z: dest.z, radius: 14, label: `Deliver the parcel to ${dest.name}` },
     ],
-    complete: ['ROSA: Delivered. $120 — come back when you want another run.'],
+    complete: ['ROSA: Delivered. $250 — come back when you want another run.'],
   };
 }
 

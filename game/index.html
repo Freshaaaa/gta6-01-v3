@@ -44,7 +44,34 @@
   #police-panel .pp-role.flk { color: #7fd4ff; }
   #police-panel .pp-role.resp { color: #aab4c4; }
   #police-panel .pp-dist { color: #dfe6ee; }
-  /* top centre: objective + mission banner */
+  /* rank panel (top right, under the stars): rank + RP progress + day */
+  #rank-panel { margin-top: 8px; text-align: left; }
+  #rank-panel .rank-name { font-size: 13px; font-weight: 800; letter-spacing: 1px; color: #7fd4ff; }
+  #rank-panel .rank-bar { width: 150px; height: 6px; background: rgba(0,0,0,.55); border-radius: 3px; overflow: hidden; margin-top: 3px; }
+  #rank-bar-fill { display: block; height: 100%; width: 0%; background: #7fd4ff; }
+  #rank-panel .rank-rp { font-size: 11px; color: #dfe6ee; margin-top: 2px; }
+  #rank-panel .rank-day { font-size: 11px; color: #ffd700; font-weight: 700; margin-top: 2px; }
+  /* in-sight badge (top right, under the stars) */
+  #in-sight { font-size: 12px; font-weight: 800; letter-spacing: 1px; margin-top: 4px; }
+  /* stage progress bar (mission panel): one segment per step */
+  #mp-stage-bar { display: flex; gap: 3px; margin-top: 4px; }
+  #mp-stage-bar .seg { flex: 1; height: 5px; background: rgba(255,255,255,.18); border-radius: 2px; }
+  #mp-stage-bar .seg.done { background: #ffd700; }
+  #mp-stage-bar .seg.cur { background: #ff9a5c; }
+  /* armour bar (bottom left, under health) */
+  #armour-wrap { margin-top: 5px; display: flex; align-items: center; gap: 8px; }
+  #armour-wrap .bar-label { font-size: 11px; font-weight: 800; letter-spacing: 1px; color: #7fd4ff; width: 52px; }
+  #armour-bar { width: 150px; height: 10px; background: rgba(0,0,0,.55); border-radius: 5px; overflow: hidden; }
+  #armour-fill { height: 100%; width: 0%; background: #7fd4ff; }
+  #armour-num { font-size: 13px; font-weight: 700; }
+  /* crew cards (right edge, under the top-right block) */
+  #crew-cards { position: absolute; right: 16px; top: 215px; display: flex; flex-direction: column; gap: 6px; width: 215px; }
+  .crew-card { display: flex; gap: 8px; align-items: center; background: rgba(8,10,18,.65); border: 1px solid rgba(255,255,255,.2); border-radius: 6px; padding: 6px 8px; }
+  .crew-card.locked { opacity: .45; }
+  .crew-card .crew-face { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 15px; color: #fff; flex-shrink: 0; text-shadow: 0 1px 2px rgba(0,0,0,.6); }
+  .crew-card .crew-name { font-size: 12px; font-weight: 800; }
+  .crew-card .crew-role { font-size: 11px; color: #ffd700; font-weight: 700; }
+  .crew-card .crew-ability { font-size: 10px; color: #aab4c4; line-height: 1.3; }
   #objective { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); font-size: 15px; font-weight: 600; max-width: 46vw; text-align: center; }
   #mission-banner { position: absolute; top: 22%; left: 50%; transform: translateX(-50%); text-align: center; opacity: 0; transition: opacity .4s; }
   #mission-banner-title { font-size: 44px; font-weight: 900; letter-spacing: 3px; color: #ffd700; }
@@ -81,6 +108,8 @@
   #prompt { position: absolute; left: 50%; bottom: 15%; transform: translateX(-50%); font-size: 15px; color: #fff; background: rgba(8,10,18,.6); padding: 5px 12px; border-radius: 5px; }
   /* dialogue */
   #dialogue { position: absolute; left: 50%; bottom: 8%; transform: translateX(-50%); width: min(680px, 86vw); background: rgba(8,10,18,.78); border-left: 4px solid #ffd700; border-radius: 6px; padding: 12px 16px; display: none; }
+  #dialogue-portrait { width: 56px; height: 56px; border-radius: 8px; flex-shrink: 0; margin-right: 12px; background-size: cover; background-position: center; border: 2px solid rgba(255,255,255,.25); }
+  #dialogue-body { flex: 1; min-width: 0; }
   #dialogue-name { font-weight: 800; color: #ffd700; font-size: 14px; letter-spacing: 1px; }
   #dialogue-text { font-size: 16px; line-height: 1.45; margin-top: 3px; }
   /* phone */
@@ -116,6 +145,13 @@
     <div id="cash">$0</div>
     <div id="wanted-label" style="display:none">WANTED</div>
     <div id="stars" class="stars">☆☆☆☆☆☆</div>
+    <div id="in-sight" style="display:none"></div>
+    <div id="rank-panel" class="panel">
+      <div class="rank-name" id="rank-name">RANK D · ROOKIE</div>
+      <div class="rank-bar"><span id="rank-bar-fill"></span></div>
+      <div class="rank-rp" id="rank-rp">0/20 RP</div>
+      <div class="rank-day" id="rank-day">DAY 1</div>
+    </div>
   </div>
   <div id="top-left">
     <div id="radio" class="panel">♪ Coastal Groove</div>
@@ -123,6 +159,7 @@
     <div id="mission-panel" class="panel">
       <div class="mp-title" id="mp-mission">FREE ROAM</div>
       <div class="mp-stage" id="mp-stage"></div>
+      <div id="mp-stage-bar"></div>
       <div class="mp-obj" id="mp-obj">Visit the Hideout for work</div>
       <div class="mp-next" id="mp-next"></div>
       <div class="mp-timer" id="mp-timer"></div>
@@ -132,6 +169,7 @@
       <div id="pp-rows"></div>
     </div>
   </div>
+  <div id="crew-cards"></div>
   <div id="objective" class="panel">Free roam — visit the Hideout for work</div>
   <div id="mission-banner">
     <div id="mission-banner-title"></div>
@@ -141,6 +179,7 @@
     <div id="location"><div id="location-name"></div><div id="location-sub"></div></div>
     <canvas id="minimap" width="190" height="190"></canvas>
     <div id="health-wrap"><div id="health-bar"><div id="health-fill"></div></div><span id="health-num">100</span></div>
+    <div id="armour-wrap"><span class="bar-label">ARMOUR</span><div id="armour-bar"><div id="armour-fill"></div></div><span id="armour-num">0</span></div>
   </div>
   <div id="bottom-right">
     <div id="weapon-slots"></div>
@@ -151,7 +190,7 @@
   </div>
   <div id="toast"></div>
   <div id="prompt"></div>
-  <div id="dialogue"><div id="dialogue-name"></div><div id="dialogue-text"></div></div>
+  <div id="dialogue"><div id="dialogue-portrait"></div><div id="dialogue-body"><div id="dialogue-name"></div><div id="dialogue-text"></div></div></div>
   <div id="phone">
     <h3>📱 SOLMAR FEED</h3>
     <div id="phone-feed"></div>
@@ -169,7 +208,7 @@
     <div id="menu-hint"></div>
     <div id="menu-controls">
       WASD drive / walk · Mouse aim · Click shoot · E interact / enter car · T taxi / race · Space handbrake<br>
-      Shift run · F punch · 1–4 weapons · R/Q radio · C phone · G garage · M mute · P pause
+      Shift run · F punch · 1–6 weapons · R/Q radio · C phone · G garage · M mute · P pause
     </div>
   </div></div>
 </div>
