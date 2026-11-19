@@ -169,4 +169,10 @@ export const PAINT_COLORS = ['#e84393', '#ff2e63', '#f1c40f', '#1abc9c', '#2980b
 export const PED_SHIRTS = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c', '#e67e22', '#fd79a8', '#00cec9', '#fdcb6e'];
 export const PED_PANTS = ['#2c3e50', '#34495e', '#7f8c8d', '#5d4037', '#37474f', '#6c5ce7'];
 export const PED_SKINS = ['#e8b98a', '#c98d5f', '#8d5524', '#f1c27d', '#d9a066'];
+
+// Street pedestrians (v5): how many walk the city, and the floor the
+// near-player top-up keeps. Spawned on sidewalks, never inside blocks,
+// so the streets read as alive from the road.
+export const PED_COUNT = 64;
+export const PED_TOPUP_MIN = 48;
 export const NEON_COLORS = ['#ff2e63', '#00cec9', '#f1c40f', '#e84393', '#00e676', '#ff6b81'];

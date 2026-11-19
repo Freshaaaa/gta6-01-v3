@@ -7,11 +7,12 @@
 // car and resolves every collision.
 
 import {
-  CAR_MODELS, PLAYER_MAX_HEALTH, PLAYER_RADIUS, PLAYER_RUN_SPEED,
-  PLAYER_WALK_SPEED, WEAPONS, WORLD_SIZE,
+  CAR_MODELS, PED_PANTS, PED_SHIRTS, PED_SKINS, PLAYER_MAX_HEALTH,
+  PLAYER_RADIUS, PLAYER_RUN_SPEED, PLAYER_WALK_SPEED, PED_TOPUP_MIN,
+  ROAD_WIDTH, WEAPONS, WORLD_SIZE,
 } from './config.js';
 import { collideCarBuildings, collideCars, collideFootBuildings, stepCar } from './physics.js';
-import { collideCircleBuildings, isOnRoad, lanePoint, nearestLane, segmentBlocked } from './city.js';
+import { collideCircleBuildings, isOnRoad, lanePoint, nearestLane, roadLines, segmentBlocked } from './city.js';
 import { clamp, dist2, lerpAngle, pick, rand, randInt, yawFromDir } from './rng.js';
 import { sfxCrash, sfxExplosion, sfxHit, sfxShoot, sfxSkid } from './audio.js';
 
@@ -73,18 +74,70 @@ export function spawnTraffic(state, count) {
   }
 }
 
+/** A point on a sidewalk: beside a road centre line, just outside the
+ * asphalt (ROAD_WIDTH/2 + 1.5..5 m), so peds are visible from the road
+ * instead of hidden inside a block. Seeded via rng — same seed, same spots. */
+function sidewalkPoint(rng) {
+  const road = roadLines[Math.floor(rand(rng, 0, roadLines.length))];
+  const along = rand(rng, 40, WORLD_SIZE - 40);
+  const side = rand(rng, 0, 1) < 0.5 ? -1 : 1;
+  const off = ROAD_WIDTH / 2 + rand(rng, 1.5, 5);
+  const horizontal = rand(rng, 0, 1) < 0.5;
+  return horizontal
+    ? { x: along, z: clamp(road + side * off, 20, WORLD_SIZE - 20) }
+    : { x: clamp(road + side * off, 20, WORLD_SIZE - 20), z: along };
+}
+
+function makePed(state, x, z) {
+  return {
+    x, z, yaw: rand(state.rng, 0, Math.PI * 2), speed: 0, walkPhase: rand(state.rng, 0, 6),
+    state: 'wander', targetX: x, targetZ: z, waitTimer: rand(state.rng, 0, 4),
+    shirt: pick(state.rng, PED_SHIRTS),
+    pants: pick(state.rng, PED_PANTS),
+    skin: pick(state.rng, PED_SKINS),
+    moving: false, fleeTimer: 0, called: false,
+  };
+}
+
 export function spawnPeds(state, count) {
   for (let i = 0; i < count; i++) {
-    const x = rand(state.rng, 40, WORLD_SIZE - 40);
-    const z = rand(state.rng, 40, WORLD_SIZE - 40);
-    state.peds.push({
-      x, z, yaw: rand(state.rng, 0, Math.PI * 2), speed: 0, walkPhase: rand(state.rng, 0, 6),
-      state: 'wander', targetX: x, targetZ: z, waitTimer: rand(state.rng, 0, 4),
-      shirt: pick(state.rng, ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c', '#e67e22', '#fd79a8', '#00cec9', '#fdcb6e']),
-      pants: pick(state.rng, ['#2c3e50', '#34495e', '#7f8c8d', '#5d4037', '#37474f']),
-      skin: pick(state.rng, ['#e8b98a', '#c98d5f', '#8d5524', '#f1c27d', '#d9a066']),
-      moving: false, fleeTimer: 0, called: false,
-    });
+    const pt = sidewalkPoint(state.rng);
+    state.peds.push(makePed(state, pt.x, pt.z));
+  }
+}
+
+/** Scene peds for staged screenshots: pedestrians on sidewalks near
+ * (cx, cz) (8–40 m away), wandering toward the player's area, so the
+ * frame reads as a living street. Constructed on the roads bracketing
+ * the player (not sampled city-wide, which almost never lands near
+ * the player). Staging only — same ped objects as normal gameplay. */
+export function spawnScenePeds(state, count, cx, cz) {
+  const cands = [];
+  for (const r of roadLines) {
+    if (Math.abs(r - cz) < 45) cands.push({ road: r, axis: 'x' }); // horizontal road (constant z)
+    if (Math.abs(r - cx) < 45) cands.push({ road: r, axis: 'z' }); // vertical road (constant x)
+  }
+  if (cands.length === 0) return;
+  for (let i = 0; i < count; i++) {
+    const c = cands[Math.floor(rand(state.rng, 0, cands.length))];
+    const side = rand(state.rng, 0, 1) < 0.5 ? -1 : 1;
+    const off = ROAD_WIDTH / 2 + rand(state.rng, 1.5, 5);
+    let x, z;
+    if (c.axis === 'x') {
+      x = clamp(cx + rand(state.rng, -40, 40), 20, WORLD_SIZE - 20);
+      z = clamp(c.road + side * off, 20, WORLD_SIZE - 20);
+    } else {
+      x = clamp(c.road + side * off, 20, WORLD_SIZE - 20);
+      z = clamp(cz + rand(state.rng, -40, 40), 20, WORLD_SIZE - 20);
+    }
+    // Keep a little distance so nobody stands on the player.
+    if (Math.hypot(x - cx, z - cz) < 8) continue;
+    const ped = makePed(state, x, z);
+    // Wander toward the player's area so they stay in frame.
+    ped.targetX = clamp(cx + rand(state.rng, -30, 30), 20, WORLD_SIZE - 20);
+    ped.targetZ = clamp(cz + rand(state.rng, -30, 30), 20, WORLD_SIZE - 20);
+    ped.waitTimer = rand(state.rng, 2, 6);
+    state.peds.push(ped);
   }
 }
 
@@ -682,8 +735,30 @@ export function updatePeds(state, dt) {
     ped.z = clamp(r.z, 3, WORLD_SIZE - 3);
   }
   // Prune fleeing peds that ran far away (keep the pool bounded).
-  if (state.peds.length > 40) {
-    state.peds = state.peds.filter((ped) => dist2(ped.x, ped.z, p.x, p.z) < 300 * 300).slice(0, 40);
+  if (state.peds.length > 80) {
+    state.peds = state.peds.filter((ped) => dist2(ped.x, ped.z, p.x, p.z) < 300 * 300).slice(0, 80);
+  }
+  // Top-up: keep the streets alive near the player. When the pool drops
+  // below the floor, bring one ped back on a sidewalk 70–130 m away
+  // (outside the immediate view, no visible pop-in), wandering toward
+  // the player's area. One per step at most, so the refill is gradual.
+  if (state.peds.length < PED_TOPUP_MIN) {
+    let pt = null;
+    for (let tries = 0; tries < 8; tries++) {
+      const cand = sidewalkPoint(state.rng);
+      const d = Math.hypot(cand.x - p.x, cand.z - p.z);
+      if (d >= 70 && d <= 130) { pt = cand; break; }
+    }
+    if (pt) {
+      const ped = makePed(state, pt.x, pt.z);
+      for (let tries = 0; tries < 8; tries++) {
+        const near = sidewalkPoint(state.rng);
+        if (Math.hypot(near.x - p.x, near.z - p.z) < 50) {
+          ped.targetX = near.x; ped.targetZ = near.z; break;
+        }
+      }
+      state.peds.push(ped);
+    }
   }
 }
 
