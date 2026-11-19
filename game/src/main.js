@@ -10,16 +10,17 @@
 
 import * as THREE from 'three';
 import {
-  CLOCK_START_MINUTES, FEED_SEEDS, LANDMARKS, PHONE_CONTACTS, STEP,
-  WEATHER_CLEAR, WEATHER_MAX_SECONDS, WEATHER_MIN_SECONDS, WEATHER_RAIN,
-  WEATHER_STORM, WORLD_SIZE,
+  CLOCK_START_MINUTES, FEED_SEEDS, LANDMARKS, PED_COUNT, PHONE_CONTACTS,
+  STEP, WEATHER_CLEAR, WEATHER_MAX_SECONDS, WEATHER_MIN_SECONDS,
+  WEATHER_RAIN, WEATHER_STORM, WORLD_SIZE,
 } from './config.js';
 import { generateCity, gpsRoute, segmentBlocked } from './city.js';
 import { mulberry32, clamp, dist2, rand } from './rng.js';
 import {
   createPlayer, exitCar, hurtPlayer, spawnCar, spawnGoon, spawnParkedCars,
-  spawnPeds, spawnTraffic, tryEnterCar, updateCars, updateCoins, updateGoons,
-  updateParticles, updatePeds, updatePlayer, updateTraffic,
+  spawnPeds, spawnScenePeds, spawnTraffic, tryEnterCar, updateCars,
+  updateCoins, updateGoons, updateParticles, updatePeds, updatePlayer,
+  updateTraffic,
 } from './entities.js';
 import { updateHeli, updatePolice, updateWanted } from './police.js';
 import { MISSIONS, makeCourierJob, objectiveText } from './missions.js';
@@ -118,7 +119,7 @@ if (HEADLESS) {
 function populate() {
   spawnParkedCars(state, 24);
   spawnTraffic(state, 14);
-  spawnPeds(state, 24);
+  spawnPeds(state, PED_COUNT);
 }
 
 // ---- missions ----
@@ -830,6 +831,9 @@ function stageShot() {
     updateWanted(state, 0.1);
     for (let i = 0; i < 60; i++) { updatePolice(state, STEP); updateHeli(state, STEP); updateCars(state, STEP); }
   }
+  // Scene pedestrians for the shot: a few NPCs on sidewalks near the
+  // player so the frame reads as a living street (v5).
+  spawnScenePeds(state, 8, p.x, p.z);
   // Paint twice, then signal the screenshot harness.
   board.sync(state, 0.016, 1);
   board.sync(state, 0.016, 1.05);
