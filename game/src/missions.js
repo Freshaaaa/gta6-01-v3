@@ -1,3 +1,4 @@
+// v15 clean re-record (01a1f673).
 // Solmar Bay 3D — the story. Fifteen missions for Dante "D" Reyes, a
 // wheelman fresh out of the Old Harbor docks, and Mara, his getaway-driver
 // partner — the duo at the heart of the game, Lucia-and-Jason style, in

@@ -1,3 +1,4 @@
+// v15 clean re-record (01a1f673).
 // Solmar Bay 3D — the police. Cruisers that chase with interception
 // (aim where the player will be), separation (so they fan out instead of
 // bunching single-file), rubber-band speed (a gap that opens still
@@ -73,6 +74,27 @@ function anyCopSeesPlayer(state) {
   return false;
 }
 
+/** The roadblock point (v15, re-recorded): ~75 m ahead of the player's heading,
+ * snapped to the nearest road, with the road's direction — the two
+ * roadblock cruisers park across it, perpendicular to traffic. It is
+ * anchored on lastSeen, not on the live player: while the player is
+ * seen, lastSeen updates every frame so the point tracks the chase;
+ * once the player breaks sight, lastSeen freezes and the roadblock
+ * stays put — a live-tracking roadblock would park on top of a hiding
+ * player and pin them forever (the cops would keep them 'seen' and
+ * the heat would never drain). */
+function roadblockPoint(state) {
+  const p = state.player;
+  const anchor = state.lastSeen || { x: p.x, z: p.z, yaw: p.yaw };
+  const heading = anchor.yaw !== undefined ? anchor.yaw : p.yaw;
+  const px = anchor.x + Math.sin(heading) * 75;
+  const pz = anchor.z + Math.cos(heading) * 75;
+  const near = nearestLane(state.city, px, pz);
+  if (!near) return null;
+  const pt = lanePoint(state.city, near.lane, near.t);
+  return { x: pt.x, z: pt.z, yaw: yawFromDir(pt.dirX, pt.dirZ) };
+}
+
 export function updateWanted(state, dt) {
   const p = state.player;
   const stars = Math.min(WANTED_MAX, Math.floor((state.wantedHeat || 0) / 25));
@@ -93,13 +115,13 @@ export function updateWanted(state, dt) {
   }
   if (state.wantedState === 'none') {
     state.wantedState = 'chasing';
-    state.lastSeen = { x: p.x, z: p.z };
+    state.lastSeen = { x: p.x, z: p.z, yaw: p.yaw };
     state.evadeTimer = 0;
   }
   const seen = anyCopSeesPlayer(state);
   state.playerSeen = seen;
   if (seen) {
-    state.lastSeen = { x: p.x, z: p.z };
+    state.lastSeen = { x: p.x, z: p.z, yaw: p.yaw };
     state.evadeTimer = 0;
     if (state.wantedState === 'escaping') {
       state.wantedState = 'chasing';
@@ -149,6 +171,39 @@ export function updateWanted(state, dt) {
   } else if (state.heli) {
     state.heli.active = false;
   }
+  // Roadblock (v15): at 4+ stars, two cruisers break off and park
+  // across the road ahead — the way the top entries' dispatch boards
+  // show ROADBLOCK. The point sits ~75 m ahead of the player's
+  // heading, snapped to the nearest road, and re-tracks every 3 s. It
+  // releases when the heat drops, the player breaks sight (escaping),
+  // or after 25 s — a parked roadblock must never pin a hiding
+  // player forever.
+  if (state.roadblock) {
+    const rb = state.roadblock;
+    rb.age = (rb.age || 0) + dt;
+    rb.retarget = (rb.retarget || 0) - dt;
+    const passed = Math.hypot(p.x - rb.x, p.z - rb.z) < 25;
+    if (stars < 4 || state.wantedState !== 'chasing' || passed || rb.age > 25) {
+      for (const car of state.cars) car.roadblock = false;
+      state.roadblock = null;
+    } else if (rb.retarget <= 0) {
+      rb.retarget = 3;
+      const pt = roadblockPoint(state);
+      if (pt) { rb.x = pt.x; rb.z = pt.z; rb.yaw = pt.yaw; }
+    }
+  } else if (stars >= 4 && state.wantedState === 'chasing') {
+    const pt = roadblockPoint(state);
+    if (pt) {
+      const cops = state.cars
+        .filter((c) => c.police && c.state !== 'wreck' && c.state !== 'burning' && !c.roadblock)
+        .sort((a, b) => (Math.hypot(b.x - p.x, b.z - p.z) - Math.hypot(a.x - p.x, a.z - p.z)));
+      if (cops.length >= 2) {
+        cops[0].roadblock = true;
+        cops[1].roadblock = true;
+        state.roadblock = { x: pt.x, z: pt.z, yaw: pt.yaw, age: 0, retarget: 3 };
+      }
+    }
+  }
   // Busted: on foot, slow, surrounded by foot cops.
   if (p.onFoot && (p.speed || 0) < 1) {
     let near = 0;
@@ -192,6 +247,32 @@ export function updatePolice(state, dt) {
   if (onWater && !searching) tpZ = Math.min(tpZ, SHORE_Z);
   for (const car of state.cars) {
     if (!car.police || car.state === 'wreck' || car.state === 'burning') continue;
+    // Roadblock (v15): a designated cruiser drives to the roadblock
+    // point and parks across the road, perpendicular to traffic. It
+    // does not chase, does not re-leash, and its role reads ROADBLOCK
+    // on the dispatch board.
+    if (car.roadblock && state.roadblock) {
+      const rb = state.roadblock;
+      const rdx = rb.x - car.x;
+      const rdz = rb.z - car.z;
+      const rgap = Math.hypot(rdx, rdz);
+      car.role = 'ROADBLOCK';
+      if (rgap < 10) {
+        car.throttle = 0;
+        car.vF *= Math.max(0, 1 - 4 * dt);
+        car.yaw = lerpAngle(car.yaw, rb.yaw + Math.PI / 2, 1 - Math.exp(-4 * dt));
+        car.steerIn = 0;
+      } else {
+        const rYaw = yawFromDir(rdx, rdz);
+        let rdyaw = rYaw - car.yaw;
+        while (rdyaw > Math.PI) rdyaw -= Math.PI * 2;
+        while (rdyaw < -Math.PI) rdyaw += Math.PI * 2;
+        car.steerIn = clamp(rdyaw * 2.2, -1, 1);
+        car.throttle = Math.abs(car.vF) < 34 ? 1 : 0;
+      }
+      car.handbrake = false;
+      continue;
+    }
     const dx = tpX - car.x;
     const dz = tpZ - car.z;
     const gap = Math.hypot(dx, dz);
@@ -235,6 +316,13 @@ export function updatePolice(state, dt) {
     if (sepX !== 0 || sepZ !== 0) {
       desiredYaw = yawFromDir(Math.sin(desiredYaw) + sepX * 8, Math.cos(desiredYaw) + sepZ * 8);
     }
+    // RAMMING (v15): a cruiser right on the player's bumper stops
+    // intercepting and drives straight into them — full throttle,
+    // no separation swerve, role reads RAMMING on the dispatch board.
+    // Only against a vehicle (never a player on foot, never a boat —
+    // cruisers cannot ram across the water).
+    const ramming = !searching && !p.onFoot && !onWater && gap < 15;
+    if (ramming) desiredYaw = yawFromDir(dx, dz);
     let dyaw = desiredYaw - car.yaw;
     while (dyaw > Math.PI) dyaw -= Math.PI * 2;
     while (dyaw < -Math.PI) dyaw += Math.PI * 2;
@@ -257,6 +345,9 @@ export function updatePolice(state, dt) {
       if (gap < 8 && !onFoot) car.throttle = 1; // ram
     }
     car.handbrake = false;
+    // The dispatch role is the car's real behaviour this frame, not a
+    // distance guess — the HUD reads car.role.
+    car.role = ramming ? 'RAMMING' : gap < 40 ? 'PURSUIT' : gap < 100 ? 'FLANKING' : 'RESPONDING';
   }
   // Foot cops chase and arrest (they never shoot). While searching they
   // head for the last-seen spot, like the cruisers.

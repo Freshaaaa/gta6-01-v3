@@ -1,3 +1,4 @@
+// v15 clean re-record (01a1f673).
 // Solmar Bay 3D — seeded RNG (mulberry32) and small random helpers.
 // One source of truth for every random draw in the game so a seed always
 // rebuilds the same city, the same traffic and the same mission rolls.

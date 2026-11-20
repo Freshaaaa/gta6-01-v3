@@ -1,3 +1,4 @@
+// v15 clean re-record (01a1f673).
 // Solmar Bay 3D — boot and the one loop. Input is read every frame,
 // the world advances in fixed 1/60 s steps, and the board paints what
 // is there. The game moves between title, play, paused, wasted and
@@ -11,14 +12,14 @@
 import * as THREE from 'three';
 import {
   BOAT_DOCKS, CAR_MODELS, CLOCK_START_MINUTES, FEED_SEEDS, LANDMARKS, PED_COUNT, PHONE_CONTACTS,
-  SHORE_Z, STEP, WEATHER_CLEAR, WEATHER_MAX_SECONDS, WEATHER_MIN_SECONDS,
-  WEATHER_RAIN, WEATHER_STORM, WORLD_SIZE, applyTune, tuneLevel,
+  SHORE_Z, STANDING_PER_JOB, STANDING_START, STEP, WEATHER_CLEAR, WEATHER_MAX_SECONDS, WEATHER_MIN_SECONDS,
+  WEATHER_RAIN, WEATHER_STORM, WORLD_SIZE, applyTune, districtFor, tuneLevel,
 } from './config.js';
 import { generateCity, gpsRoute, lanePoint, nearestLane, segmentBlocked } from './city.js';
 import { mulberry32, clamp, dist2, pick, rand, yawFromDir } from './rng.js';
 import {
-  createPlayer, exitBoat, exitCar, hurtPlayer, nearestBoat, spawnBoat, spawnCar, spawnGoon, spawnParkedCars,
-  spawnPeds, spawnScenePeds, spawnTraffic, tryEnterBoat, tryEnterCar, updateBoats,
+  createPlayer, exitBoat, exitCar, hurtPlayer, nearestBoat, spawnBeachPeds, spawnBoat, spawnCar, spawnGoon, spawnParkedCars,
+  spawnParticles, spawnPeds, spawnScenePeds, spawnTraffic, tryEnterBoat, tryEnterCar, updateBoats,
   updateCars, updateCoins, updateGoons, updateParticles, updatePeds, updatePlayer,
   updateTraffic,
 } from './entities.js';
@@ -60,7 +61,8 @@ function newState(existingCity) {
     cars: [], boats: [], peds: [], goons: [],
     particles: new Array(500).fill(null),
     tracers: new Array(16).fill(null),
-    heli: null,
+    heli: null, roadblock: null, // roadblock point (v15), null when none
+    standing: {}, // district standing (v15): name -> 0-100, starts at 50
     wantedHeat: 0, wantedStars: 0, wantedState: 'none',
     lastSeen: null, evadeTimer: 0, spawnTimer: 0,
     clockMinutes: CLOCK_START_MINUTES, day: 1,
@@ -117,8 +119,8 @@ if (HEADLESS) {
 // ---- population ----
 
 function populate() {
-  spawnParkedCars(state, 24);
-  spawnTraffic(state, 14);
+  spawnParkedCars(state, 36);
+  spawnTraffic(state, 20);
   spawnPeds(state, PED_COUNT);
   // The fleet (v14): the Dinghy moored at the Marina Pier and the
   // Speedboat by the Lighthouse — both drivable from the start, both
@@ -246,6 +248,12 @@ function completeMission() {
   const p = state.player;
   p.money += m.reward;
   p.rep += 10;
+  // District standing (v15): finishing a job raises the standing of
+  // the district it ends in — the bar on the HUD is a real record of
+  // where the player has worked.
+  const d = districtFor(p.x, p.z);
+  const cur = state.standing[d.name] ?? STANDING_START;
+  state.standing[d.name] = Math.min(100, cur + STANDING_PER_JOB);
   sfxCash();
   state.marker = { active: false, x: 0, z: 0, radius: 10, color: '#ffd700' };
   state.checkpoints = [];
@@ -787,6 +795,7 @@ function applySave(data) {
   state.vansRobbed = data.vansRobbed || 0;
   state.feed = data.feed || state.feed;
   state.shopCycle = data.shopCycle || 0;
+  state.standing = data.standing || {};
   if (data.coinsTaken) {
     state.city.coins.forEach((c, i) => { c.taken = !!data.coinsTaken[i]; });
   }
@@ -925,9 +934,10 @@ function runChaseSim(state, steps) {
 // Put the nearest pursuit cruisers in frame ahead of the player
 // (flanking positions on the player's own road), so the chase reads as
 // a chase from the chase camera — the cruisers otherwise close in from
-// behind, where the camera never sees them. Up to four ahead (v13:
-// the 4-star chase now brings six cruisers, so four in frame still
-// leaves two hunting from behind).
+// behind, where the camera never sees them. The nearest one is placed
+// right on the player's bumper as a RAMMING unit (v15, re-recorded),
+// and the two farthest are parked across the road ahead as a ROADBLOCK
+// pair (v15) — the dispatch board reads the real roles.
 function placeCruisersInFrame(state) {
   const p = state.player;
   const fx = Math.sin(p.yaw);
@@ -939,10 +949,10 @@ function placeCruisersInFrame(state) {
     .filter((c) => c.police && c.state !== 'wreck' && !c.burning)
     .sort((a, b) => (Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z)));
   const spots = [
-    { ahead: 26, side: 5, vF: 20 },
-    { ahead: 38, side: -4, vF: 16 },
-    { ahead: 50, side: 6, vF: 14 },
-    { ahead: 62, side: -5, vF: 12 },
+    { ahead: 26, side: 5, vF: 20, role: 'RAMMING' },
+    { ahead: 38, side: -4, vF: 16, role: 'PURSUIT' },
+    { ahead: 50, side: 6, vF: 14, role: 'PURSUIT' },
+    { ahead: 62, side: -5, vF: 12, role: 'FLANKING' },
   ];
   for (let i = 0; i < Math.min(spots.length, cops.length); i++) {
     const car = cops[i];
@@ -952,6 +962,20 @@ function placeCruisersInFrame(state) {
     car.yaw = p.yaw;
     car.vF = s.vF;
     car.state = 'chase';
+    car.role = s.role;
+  }
+  // Roadblock pair: the two farthest cruisers park across the road
+  // 85 m ahead, perpendicular to traffic, engines off.
+  for (let i = 0; i < 2; i++) {
+    const car = cops[spots.length + i];
+    if (!car) break;
+    const side = i === 0 ? -4.5 : 4.5;
+    car.x = p.x + fx * 85 + rx * side;
+    car.z = p.z + fz * 85 + rz * side;
+    car.yaw = p.yaw + Math.PI / 2;
+    car.vF = 0;
+    car.state = 'chase';
+    car.role = 'ROADBLOCK';
   }
 }
 
@@ -974,25 +998,51 @@ function placeHeliInFrame(state) {
 // Place pursuit cruisers on the shore road ahead of a boat (v14):
 // cruisers cannot drive on the water, so for a boat shot they hold the
 // shoreline parallel to the boat — the chase reads from the boat's
-// camera, with the cops on the beach road to the north.
+// camera, with the cops on the beach road to the north. Six units at
+// 4 stars (v15): four driving the shore road, two parked across it as
+// a ROADBLOCK pair 110 m ahead.
 function placeCruisersOnShore(state) {
   const p = state.player;
   const cops = state.cars
     .filter((c) => c.police && c.state !== 'wreck' && !c.burning)
     .sort((a, b) => (Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z)));
   const spots = [
-    { ahead: 30, vF: 18 },
-    { ahead: 55, vF: 15 },
+    { ahead: 30, z: 510, yaw: Math.PI / 2, vF: 18, role: 'PURSUIT' },
+    { ahead: 55, z: 510, yaw: Math.PI / 2, vF: 15, role: 'PURSUIT' },
+    { ahead: 80, z: 510, yaw: Math.PI / 2, vF: 12, role: 'FLANKING' },
+    { ahead: -35, z: 510, yaw: Math.PI / 2, vF: 12, role: 'FLANKING' },
+    { ahead: 110, z: 506, yaw: 0, vF: 0, role: 'ROADBLOCK' },
+    { ahead: 110, z: 514, yaw: 0, vF: 0, role: 'ROADBLOCK' },
   ];
   for (let i = 0; i < Math.min(spots.length, cops.length); i++) {
     const car = cops[i];
     const s = spots[i];
     car.x = p.x + s.ahead;
-    car.z = 510;
-    car.yaw = Math.PI / 2;
+    car.z = s.z;
+    car.yaw = s.yaw;
     car.vF = s.vF;
     car.state = 'chase';
+    car.role = s.role;
   }
+}
+
+// Stage a burning car (v15): a wrecked car on fire with a live smoke
+// column — the night shot's drama. burnTimer is set huge so it is
+// still burning when the screenshot is taken (it would explode after
+// 3 s by default); the smoke column is seeded by hand because the
+// staged frame is painted before the render loop has run enough
+// frames for the car to smoke on its own.
+function stageBurningCar(state, x, z, yaw) {
+  const car = spawnCar(state, 'Comet', x, z, yaw, { state: 'traffic' });
+  car.hp = 0;
+  car.state = 'burning';
+  car.burnTimer = 999;
+  car.smokeTimer = 0;
+  for (let h = 1; h <= 9; h += 2) {
+    spawnParticles(state, x, h, z, { count: 7, color: '#888888', speed: 0.6, life: 4, up: 0.6, gravity: -0.4 });
+    spawnParticles(state, x, h + 0.5, z, { count: 3, color: '#ff7722', speed: 1, life: 1.5, up: 2 });
+  }
+  return car;
 }
 
 function stageShot() {
@@ -1029,7 +1079,7 @@ function stageShot() {
     state.stepState.timeLeft = 142;
     runChaseSim(state, 240);
     placeCruisersInFrame(state);
-    spawnNearbyTraffic(state, 6);
+    spawnNearbyTraffic(state, 10);
   } else if (SHOT === 'chase') {
     // Golden hour, late story: Heatwave (m8) escape step, 4 stars, the
     // whole precinct on the player. $17,900 honestly earned by then:
@@ -1062,7 +1112,7 @@ function stageShot() {
     runChaseSim(state, 900);
     placeCruisersInFrame(state);
     placeHeliInFrame(state);
-    spawnNearbyTraffic(state, 6);
+    spawnNearbyTraffic(state, 10);
   } else if (SHOT === 'beach') {
     // Bright DAYTIME beach drive (v13): Stadium Brawl (m9) deliver
     // step — the ledger goes to the Marina Pier, down the beach road
@@ -1094,7 +1144,7 @@ function stageShot() {
     state.lastSeen = { x: p.x, z: p.z };
     runChaseSim(state, 600);
     placeCruisersInFrame(state);
-    spawnNearbyTraffic(state, 6);
+    spawnNearbyTraffic(state, 10);
   } else if (SHOT === 'heli') {
     // Golden hour, finale: King of the Bay (m10) timed checkpoints,
     // 4 stars with the helicopter up. $24,900 honestly earned by then:
@@ -1127,7 +1177,7 @@ function stageShot() {
     runChaseSim(state, 900);
     placeCruisersInFrame(state);
     placeHeliInFrame(state);
-    spawnNearbyTraffic(state, 6);
+    spawnNearbyTraffic(state, 10);
   } else if (SHOT === 'boat') {
     // Bright DAYTIME boat run (v14): The Smuggler's Run (m13) timed
     // checkpoints — the Dinghy on the water off the Marina coast,
@@ -1135,6 +1185,8 @@ function stageShot() {
     // $38,000 honestly earned by then: m1–m12 rewards ($33,700) +
     // side income ($4,700) − the m11 engine tune ($400). Rep 150
     // (12 missions + 15 kills) — RANK S, day 13, armour 60.
+    // (v15: 4 stars now, so 6 cruisers hold the shore — the boat
+    // shot reads as a real chase, not three cars watching.)
     state.clockMinutes = 15 * 60;
     state.weather = WEATHER_CLEAR;
     const boat = state.boats.find((b) => b.model.name === 'Dinghy') || state.boats[0];
@@ -1157,13 +1209,16 @@ function stageShot() {
     p.weapon = 'smg';
     stageMission(12, 3, "VINCE: Grab the crate at the pier, take the Dinghy, and run the whole coast to the east buoy. The cops will be on the shore watching you sail past.");
     state.stepState.timeLeft = 138;
-    state.wantedHeat = 50;
-    state.wantedStars = 2;
+    state.wantedHeat = 100;
+    state.wantedStars = 4;
     state.wantedState = 'chasing';
     state.lastSeen = { x: p.x, z: p.z };
-    runChaseSim(state, 600);
+    runChaseSim(state, 900);
     placeCruisersOnShore(state);
-    spawnNearbyTraffic(state, 6);
+    // Beachgoers on the sand (v15): the beach the boat sails past is
+    // crowded — umbrellas, towels and people on the sand.
+    spawnBeachPeds(state, 10, p.x, p.z);
+    spawnNearbyTraffic(state, 10);
   } else if (SHOT === 'night') {
     // NIGHT NEON (v14): Tune Wars (m14) timed checkpoints — a tuned
     // Strada at TUNE 2 down The Strip at 21:45, neon signs and lamps
@@ -1207,11 +1262,16 @@ function stageShot() {
     runChaseSim(state, 900);
     placeCruisersInFrame(state);
     placeHeliInFrame(state);
-    spawnNearbyTraffic(state, 6);
+    // A burning car ahead on The Strip (v15): the night shot's
+    // explosion aftermath, smoke column rising over the neon. Staged
+    // 35 m ahead of the player so the flame fills the frame — at 70 m
+    // it was a speck the camera never showed.
+    stageBurningCar(state, 425, 450, Math.PI / 2);
+    spawnNearbyTraffic(state, 10);
   }
   // Scene pedestrians for the shot: NPCs on sidewalks near the player
-  // so the frame reads as a living street (v5), more of them now (v13).
-  spawnScenePeds(state, 24, p.x, p.z);
+  // so the frame reads as a living street (v5), more of them now (v15).
+  spawnScenePeds(state, 40, p.x, p.z);
   // Snap the camera onto the chase framing (the spring would otherwise
   // still be travelling from the high title view), paint twice, then
   // signal the screenshot harness.
@@ -1247,6 +1307,23 @@ function apiState() {
     feed: state.feed.length, garage: state.garage.length,
     coins: state.coinsCollected, vansRobbed: state.vansRobbed,
     heli: state.heli ? state.heli.active : false,
+    // v15 debug hooks: chase-camera distance/FOV, district standing,
+    // police roles + roadblock, the minimap search ring, beach props
+    // and the bridge — the playtest reads these, the game never shows
+    // them as text.
+    cameraZoom: +(state.cameraZoom || 0).toFixed(2),
+    cameraFov: +(state.cameraFov || 0).toFixed(1),
+    standing: (() => {
+      const d = districtFor(p.x, p.z);
+      return { district: d.name, value: (state.standing || {})[d.name] ?? STANDING_START };
+    })(),
+    cops: (state.cars || [])
+      .filter((c) => c.police && c.state !== 'wreck' && c.state !== 'burning')
+      .map((c) => ({ callsign: c.callsign || 'SPD', role: c.role || null, d: Math.round(Math.hypot(c.x - p.x, c.z - p.z)) })),
+    roadblock: !!state.roadblock,
+    searchRing: (state.wantedStars || 0) > 0 && (state.playerSeen === true || state.wantedState === 'chasing'),
+    beachProps: (state.city.beachProps || []).length,
+    bridge: !!state.city.bridge,
     dialogue: state.dialogue.length > 0,
     dialogueIndex: state.dialogueIndex,
     dialogueLines: state.dialogue.length,
@@ -1339,7 +1416,14 @@ window.__solmar = {
   // none and the cops see straight across; test the real LOS from the
   // four surrounding road midpoints.
   hidingSpot(fx, fz) {
+    // v15: a hide spot must be invisible to every live cruiser, not
+    // just covered from the escape origin — at 6 stars, 9 cruisers
+    // converge from all directions, and one parked on a diagonal with
+    // line of sight to the block centre pins the player 'seen' forever
+    // (the heat never drains). A spot any cruiser can see scores -1.
+    const cops = (state.cars || []).filter((c) => c.police && c.state !== 'wreck' && c.state !== 'burning');
     let best = null; let bestScore = -1;
+    let fallback = null; let fallbackScore = -1;
     for (let i = 0; i < 8; i++) {
       for (let j = 0; j < 8; j++) {
         const cx = 30 + i * 60 + 30, cz = 30 + j * 60 + 30;
@@ -1353,11 +1437,24 @@ window.__solmar = {
         for (const b of state.city.buildings) {
           if (Math.abs(b.x - cx) < 25 && Math.abs(b.z - cz) < 25) cover++;
         }
-        const score = blocked * 10000 + cover * 100 + d;
+        // No cruiser may have line of sight to the spot (sight range
+        // is 130 m); also keep the spot well clear of the nearest one.
+        let minCop = Infinity;
+        let visible = false;
+        for (const c of cops) {
+          const cd = Math.hypot(c.x - cx, c.z - cz);
+          if (cd < minCop) minCop = cd;
+          if (cd < 130 && !segmentBlocked(state.city, c.x, c.z, cx, cz)) { visible = true; break; }
+        }
+        const score = blocked * 10000 + cover * 100 + d + Math.min(minCop, 300);
+        if (score > fallbackScore) { fallbackScore = score; fallback = { x: cx, z: cz }; }
+        if (visible) continue;
         if (score > bestScore) { bestScore = score; best = { x: cx, z: cz }; }
       }
     }
-    return best;
+    // If every spot is visible to some cruiser, take the best-covered
+    // one anyway (never return null — the caller teleports to it).
+    return best || fallback;
   },
   get drift() { return state.player.car ? state.player.car.drifting : false; },
   get radioTrack() { return `${state.weather}`; },

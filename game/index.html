@@ -1,4 +1,5 @@
 <!doctype html>
+<!-- v15 clean re-record (01a1f673). -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -43,6 +44,7 @@
   #police-panel .pp-role.pur { color: #ffb84d; }
   #police-panel .pp-role.flk { color: #7fd4ff; }
   #police-panel .pp-role.resp { color: #aab4c4; }
+  #police-panel .pp-role.road { color: #c77dff; }
   #police-panel .pp-dist { color: #dfe6ee; }
   /* rank panel (top right, under the stars): rank + RP progress + day */
   #rank-panel { margin-top: 8px; text-align: left; }
@@ -81,6 +83,11 @@
   #location { margin-bottom: 8px; }
   #location-name { font-size: 16px; font-weight: 800; letter-spacing: 1px; color: #ffd700; }
   #location-sub { font-size: 12px; color: #dfe6ee; }
+  /* district standing (v15, re-recorded): tier + value + bar under the location */
+  #standing { display: flex; align-items: center; gap: 6px; margin-top: 3px; }
+  #standing-name { font-size: 11px; font-weight: 800; letter-spacing: 1px; color: #7dff9a; }
+  #standing-bar { width: 90px; height: 5px; background: rgba(0,0,0,.55); border-radius: 3px; overflow: hidden; }
+  #standing-bar-fill { display: block; height: 100%; width: 50%; background: #7dff9a; }
   #minimap { width: 190px; height: 190px; border-radius: 50%; border: 3px solid rgba(255,255,255,.35); box-shadow: 0 2px 12px rgba(0,0,0,.6); background: #10131c; }
   #health-wrap { margin-top: 8px; display: flex; align-items: center; gap: 8px; }
   #health-bar { width: 150px; height: 10px; background: rgba(0,0,0,.55); border-radius: 5px; overflow: hidden; }
@@ -89,12 +96,14 @@
   /* bottom right: speed + weapon */
   #bottom-right { position: absolute; right: 18px; bottom: 16px; text-align: right; }
   #weapon-slots { display: flex; gap: 5px; justify-content: flex-end; margin-bottom: 8px; }
-  .wslot { width: 54px; background: rgba(8,10,18,.65); border: 1px solid rgba(255,255,255,.2); border-radius: 5px; padding: 4px 2px; text-align: center; }
+  .wslot { width: 58px; background: rgba(8,10,18,.65); border: 1px solid rgba(255,255,255,.2); border-radius: 5px; padding: 4px 2px; text-align: center; }
   .wslot.cur { border-color: #ffd700; }
   .wslot.locked { opacity: .45; }
   .wslot .ws-key { font-size: 10px; color: #aab4c4; }
+  .wslot .ws-icon svg { width: 30px; height: 18px; display: block; margin: 1px auto 0; }
   .wslot .ws-name { font-size: 11px; font-weight: 700; }
   .wslot .ws-ammo { font-size: 11px; color: #ffd700; font-weight: 700; }
+  .wslot .ws-lock { font-size: 9px; font-weight: 800; color: #ff6b6b; }
   #speed { font-size: 52px; font-weight: 900; line-height: 1; }
   #speed-label { font-size: 13px; color: #dfe6ee; }
   #car-cond { font-size: 12px; color: #dfe6ee; margin-top: 4px; }
@@ -183,7 +192,7 @@
     <div id="mission-banner-sub"></div>
   </div>
   <div id="bottom-left">
-    <div id="location"><div id="location-name"></div><div id="location-sub"></div></div>
+    <div id="location"><div id="location-name"></div><div id="location-sub"></div><div id="standing"><span id="standing-name"></span><div id="standing-bar"><span id="standing-bar-fill"></span></div></div></div>
     <canvas id="minimap" width="190" height="190"></canvas>
     <div id="health-wrap"><div id="health-bar"><div id="health-fill"></div></div><span id="health-num">100</span></div>
     <div id="armour-wrap"><span class="bar-label">ARMOUR</span><div id="armour-bar"><div id="armour-fill"></div></div><span id="armour-num">0</span></div>

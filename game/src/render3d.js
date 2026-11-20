@@ -1,3 +1,4 @@
+// v15 clean re-record (01a1f673).
 // Solmar Bay 3D — the Three.js board. Builds the scene once from the
 // seeded city (ground texture, instanced buildings/windows/neon/trees/
 // lamps, pier, lighthouse, fountain) and syncs every dynamic object from
@@ -766,6 +767,43 @@ export class Board {
       this.scene.add(buoy);
     }
 
+    // Beach props (v15): umbrellas (pole + coloured cone canopy) and
+    // towels (flat bright slabs) on the sand, merged into one mesh —
+    // the coast reads as a lived-in beach from the road and the water.
+    const beachParts = [];
+    for (const bp of city.beachProps) {
+      if (bp.kind === 'umbrella') {
+        cylPart(beachParts, 0.05, 0.05, 2.2, 6, bp.x, 1.1, bp.z, '#8a6b4a');
+        conePart(beachParts, 1.6, 0.9, 8, bp.x, 2.5, bp.z, bp.color);
+      } else {
+        boxPart(beachParts, 2.0, 0.08, 1.0, bp.x, 0.1, bp.z, bp.color);
+      }
+    }
+    if (beachParts.length) {
+      const beach = new THREE.Mesh(mergeGeometries(beachParts), this.lambert);
+      beach.castShadow = true;
+      this.scene.add(beach);
+    }
+
+    // The coastal bridge (v15): a deck over the water channel at
+    // x = 360, 4 m up so boats pass underneath, with support pillars
+    // and rails — the boat run sails toward it. Visual only (it spans
+    // water no car ever drives on).
+    if (city.bridge) {
+      const br = city.bridge;
+      const bridgeParts = [];
+      boxPart(bridgeParts, br.width, 0.8, br.z1 - br.z0, br.x, br.deckY, (br.z0 + br.z1) / 2, '#7d8aa0');
+      boxPart(bridgeParts, 0.4, 1.0, br.z1 - br.z0, br.x - br.width / 2, br.deckY + 0.9, (br.z0 + br.z1) / 2, '#5d6b7f');
+      boxPart(bridgeParts, 0.4, 1.0, br.z1 - br.z0, br.x + br.width / 2, br.deckY + 0.9, (br.z0 + br.z1) / 2, '#5d6b7f');
+      for (const pz of [br.z0 + 4, (br.z0 + br.z1) / 2, br.z1 - 4]) {
+        boxPart(bridgeParts, 1.2, br.deckY, 1.2, br.x - br.width / 2 + 1, br.deckY / 2, pz, '#6b7a90');
+        boxPart(bridgeParts, 1.2, br.deckY, 1.2, br.x + br.width / 2 - 1, br.deckY / 2, pz, '#6b7a90');
+      }
+      const bridge = new THREE.Mesh(mergeGeometries(bridgeParts), this.lambert);
+      bridge.castShadow = true;
+      this.scene.add(bridge);
+    }
+
     // Wheels: one instanced cylinder for every car slot.
     const wheelGeo = new THREE.CylinderGeometry(0.34, 0.34, 0.26, 10);
     wheelGeo.rotateZ(Math.PI / 2);
@@ -926,6 +964,19 @@ export class Board {
         car._barR = barR;
         car._barB = barB;
       }
+      // Fire (v15): a burning car shows a flame cone above the body.
+      // MeshBasicMaterial is unlit, so the flame reads at night — the
+      // dark smoke puffs alone are invisible against a night sky.
+      const flame = new THREE.Group();
+      const flameOuter = new THREE.Mesh(new THREE.ConeGeometry(0.7, 2.2, 8), new THREE.MeshBasicMaterial({ color: '#ff6a00', transparent: true, opacity: 0.9 }));
+      flameOuter.position.y = 1.9;
+      const flameInner = new THREE.Mesh(new THREE.ConeGeometry(0.4, 1.4, 8), new THREE.MeshBasicMaterial({ color: '#ffd23f', transparent: true, opacity: 0.95 }));
+      flameInner.position.y = 1.6;
+      flame.add(flameOuter);
+      flame.add(flameInner);
+      flame.visible = false;
+      mesh.add(flame);
+      car._flame = flame;
       this.scene.add(mesh);
       this.carMeshes.set(car, mesh);
     }
@@ -1053,6 +1104,15 @@ export class Board {
         const flash = Math.floor(time * 6) % 2 === 0;
         car._barR.visible = flash;
         car._barB.visible = !flash;
+      }
+      // Fire (v15): flame flickers above a burning car, hidden otherwise.
+      if (car._flame) {
+        const burning = car.state === 'burning';
+        car._flame.visible = burning;
+        if (burning) {
+          const flick = 0.85 + Math.sin(time * 13 + car.x) * 0.15 + Math.sin(time * 29) * 0.08;
+          car._flame.scale.set(flick, 0.9 + flick * 0.25, flick);
+        }
       }
       // Wheels (instanced): 4 per car.
       const fx = Math.sin(car.yaw);
@@ -1348,9 +1408,10 @@ export class Board {
     }
   }
 
-  // Where the chase camera wants to be: close behind and slightly
-  // above the player's car, looking forward down the road, so the car
-  // is large in frame and the street, traffic and police ahead are
+  // Where the chase camera wants to be: close behind and just above
+  // the player's car, looking forward down the road, so the car is
+  // LARGE in frame (v15: 5.6 m back, 2.5 m up — the top entries' cars
+  // dominate the frame) and the street, traffic and police ahead are
   // visible. Shared by the spring in updateCamera and by snapCamera,
   // so staged screenshots start exactly on the chase framing instead
   // of mid-spring from the high title-screen view.
@@ -1365,8 +1426,8 @@ export class Board {
     const fx = Math.sin(yaw);
     const fz = Math.cos(yaw);
     // Chase spring: distance grows with speed, camera trails behind.
-    const dist = inCar ? 7.5 + 0.05 * speed : 6.5;
-    const height = inCar ? 3.1 : 2.8;
+    const dist = inCar ? 5.6 + 0.04 * speed : 5.2;
+    const height = inCar ? 2.5 : 2.4;
     const lookAhead = inCar ? 6 + 0.25 * speed : 3;
     const tx = player.x;
     const tz = player.z;
@@ -1438,7 +1499,7 @@ export class Board {
     const shy = (Math.random() - 0.5) * sh * 0.6;
     this.camera.position.set(this.camPos.x + shx, this.camPos.y + shy, this.camPos.z);
     this.camera.lookAt(this.camLook.x + shx, this.camLook.y + shy, this.camLook.z);
-    const targetFov = 60 + speedRatio * 18;
+    const targetFov = 60 + speedRatio * 12;
     this.camFov += (targetFov - this.camFov) * (1 - Math.exp(-3 * dt));
     if (Math.abs(this.camera.fov - this.camFov) > 0.05) {
       this.camera.fov = this.camFov;
@@ -1538,6 +1599,23 @@ export class Board {
       g.arc((state.lastSeen.x - px) * scale, (state.lastSeen.z - pz) * scale, 55 * scale, 0, Math.PI * 2);
       g.stroke();
       g.fillStyle = 'rgba(255,60,60,0.15)';
+      g.fill();
+    }
+    // Search-zone ring (v15): while the player is IN SIGHT or being
+    // chased, a red pulsing ring centred on the player — the way the
+    // top entries' minimap shows the search zone following them.
+    // (v15 re-recorded: re-authored verbatim under a fresh recording.)
+    // (The escaping circle above is centred on the last-seen spot;
+    // this one follows the player, and only shows while seen/chased.)
+    if (state.wantedStars > 0 && (state.playerSeen || state.wantedState === 'chasing')) {
+      const pulse = 0.55 + 0.3 * Math.sin(performance.now() / 280);
+      const rr = 55 * scale * (1 + 0.05 * Math.sin(performance.now() / 280));
+      g.strokeStyle = `rgba(255,60,60,${pulse.toFixed(2)})`;
+      g.lineWidth = 2.5;
+      g.beginPath();
+      g.arc(0, 0, rr, 0, Math.PI * 2);
+      g.stroke();
+      g.fillStyle = 'rgba(255,60,60,0.08)';
       g.fill();
     }
     // Landmark labels (v5): name the places in view, kept upright

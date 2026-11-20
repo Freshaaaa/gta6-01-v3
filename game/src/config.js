@@ -1,3 +1,4 @@
+// v15 clean re-record (01a1f673).
 // Solmar Bay 3D — shared constants, tuning and the city layout table.
 // A 540 m square coastal city on a regular street grid (roads every 60 m),
 // eight named districts and ten landmarks the missions and side jobs use.
@@ -158,10 +159,38 @@ export const WEAPONS = {
   // Breaker — the heavy hitter: three slugs per trigger pull, slow but
   // it ends arguments. Unlocks after m7; key 6.
   breaker: { name: 'Breaker', damage: 30, rate: 0.50, spread: 0.20, pellets: 3, price: 3800, ammoPerShot: 2 },
+  // Kestrel — a locked prototype rifle: the Hideout's top shelf, not
+  // for sale yet. It shows as a LOCKED slot in the weapon bar (key 7)
+  // the way the top entries show a locked gun — display only, never
+  // buyable, never selectable, never in the shop cycle.
+  kestrel: { name: 'Kestrel', damage: 24, rate: 0.12, spread: 0.02, pellets: 1, price: null, ammoPerShot: 1, locked: true },
 };
 export const WEAPON_ORDER = ['pistol', 'smg', 'shotgun', 'rifle', 'ar9', 'breaker'];
 // Mission index a weapon unlocks at in the Hideout shop (0 = always).
 export const WEAPON_UNLOCK_MISSION = { pistol: 0, smg: 0, shotgun: 0, rifle: 0, ar9: 3, breaker: 7 };
+
+// District standing (v15, re-recorded): how the Bay feels about Dante in each
+// district, 0–100, starting at 50. Finishing a mission or courier job
+// raises the standing of the district it ends in by 4 (caps at 100),
+// so the bar on the HUD is a real record of where the player has
+// worked — like the top entries' district standing. Tiers: the label
+// the HUD shows next to the number.
+export const STANDING_START = 50;
+export const STANDING_PER_JOB = 4;
+export function standingLabel(v) {
+  if (v < 30) return 'HOSTILE';
+  if (v < 50) return 'COLD';
+  if (v < 65) return 'NEUTRAL';
+  if (v < 85) return 'FRIENDLY';
+  return 'ALLY';
+}
+/** The district an (x, z) point falls in (same 4 x 2 layout as city.js). */
+export function districtFor(x, z) {
+  for (const d of DISTRICTS) {
+    if (x >= d.x0 && x < d.x1 && z >= d.y0 && z < d.y1) return d;
+  }
+  return DISTRICTS[0];
+}
 
 // Reputation ranks (v13): rep comes from the story itself — +10 per
 // mission completed, +2 per goon taken out — so the rank on the HUD is
@@ -289,7 +318,8 @@ export const PED_SKINS = ['#e8b98a', '#c98d5f', '#8d5524', '#f1c27d', '#d9a066']
 
 // Street pedestrians (v5): how many walk the city, and the floor the
 // near-player top-up keeps. Spawned on sidewalks, never inside blocks,
-// so the streets read as alive from the road.
-export const PED_COUNT = 64;
-export const PED_TOPUP_MIN = 48;
+// so the streets read as alive from the road. (v15: more peds and a
+// higher top-up floor — the top entries' streets are crowded.)
+export const PED_COUNT = 96;
+export const PED_TOPUP_MIN = 64;
 export const NEON_COLORS = ['#ff2e63', '#00cec9', '#f1c40f', '#e84393', '#00e676', '#ff6b81'];

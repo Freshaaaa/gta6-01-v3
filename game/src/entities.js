@@ -1,3 +1,4 @@
+// v15 clean re-record (01a1f673).
 // Solmar Bay 3D — the living city. Factories for the player, cars,
 // pedestrians and goons, plus the per-population updates: traffic
 // following the lane graph, pedestrians walking and fleeing, goons hunting
@@ -141,6 +142,23 @@ export function spawnScenePeds(state, count, cx, cz) {
     ped.targetX = clamp(cx + rand(state.rng, -30, 30), 20, WORLD_SIZE - 20);
     ped.targetZ = clamp(cz + rand(state.rng, -30, 30), 20, WORLD_SIZE - 20);
     ped.waitTimer = rand(state.rng, 2, 6);
+    state.peds.push(ped);
+  }
+}
+
+/** Beachgoers for staged screenshots (v15, re-recorded): pedestrians standing and
+ * wandering on the sand (z 513–525) near (cx, cz), so the beach reads
+ * as crowded from the boat and the beach road — same ped objects as
+ * normal gameplay, just placed on the sand instead of a sidewalk. */
+export function spawnBeachPeds(state, count, cx, cz) {
+  for (let i = 0; i < count; i++) {
+    const x = clamp(cx + rand(state.rng, -45, 45), 20, WORLD_SIZE - 20);
+    const z = clamp(rand(state.rng, 513, 525), 513, 525);
+    if (Math.hypot(x - cx, z - cz) < 6) continue;
+    const ped = makePed(state, x, z);
+    ped.targetX = clamp(x + rand(state.rng, -12, 12), 20, WORLD_SIZE - 20);
+    ped.targetZ = clamp(z + rand(state.rng, -4, 4), 513, 525);
+    ped.waitTimer = rand(state.rng, 2, 8);
     state.peds.push(ped);
   }
 }

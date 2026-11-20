@@ -1,3 +1,4 @@
+// v15 clean re-record (01a1f673).
 // Solmar Bay 3D — the city itself. A seeded generator lays a 9x9 street
 // grid over the world, fills each block with buildings (palettes per
 // district, towers downtown, neon signs on the Strip), parks and trees,
@@ -60,6 +61,8 @@ export function generateCity(seed) {
     nodeOut: [],     // per node: list of lane indices
     props: [],       // knockable/static small props {x, z, r, kind}
     landmarkBuildings: {},
+    beachProps: [],  // umbrellas + towels on the sand (v15) {x, z, kind, color}
+    bridge: null,    // the coastal bridge over the water channel (v15)
   };
 
   // ---- lane graph: 9x9 intersection nodes, directed lanes both ways ----
@@ -212,6 +215,26 @@ export function generateCity(seed) {
       taken: false,
     });
   }
+
+  // Beach props (v15, re-recorded): umbrellas and towels on the sand (z 512–526),
+  // so the coast reads as a lived-in beach from the road and the water
+  // — the top entries' beach scenes are crowded with them. Umbrellas
+  // stand in a loose line down the coast; each has a towel beside it.
+  const UMBRELLA_COLORS = ['#ff2e63', '#f1c40f', '#00cec9', '#e84393', '#ff6b35', '#1abc9c'];
+  for (let i = 0; i < 14; i++) {
+    const x = 40 + i * 34 + rand(rng, -8, 8);
+    const z = rand(rng, 514, 523);
+    const color = UMBRELLA_COLORS[i % UMBRELLA_COLORS.length];
+    city.beachProps.push({ x, z, kind: 'umbrella', color });
+    city.beachProps.push({ x: x + rand(rng, 2, 4), z: z + rand(rng, -1, 2), kind: 'towel', color });
+  }
+
+  // The coastal bridge (v15): a road bridge over the water channel at
+  // x = 360, deck 4 m up so boats pass underneath — a landmark the boat
+  // run sails toward and the beach road drives under. Visual only (it
+  // spans water no car ever drives on); the deck is high enough that
+  // the Dinghy and Speedboat clear it.
+  city.bridge = { x: 360, z0: 503, z1: 540, deckY: 4, width: 9 };
 
   return city;
 }

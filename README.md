@@ -1,10 +1,11 @@
+<!-- v15 clean re-record (01a1f673). -->
 [![make.fun · gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![rank](https://make.fun/badge/gta6-01/Freshaaaa/gta6-01-v3/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![reward](https://make.fun/badge/gta6-01/Freshaaaa/gta6-01-v3/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 
-# Solmar Bay 3D — Crowded Streets v14
+# Solmar Bay 3D — Crowded Streets v15
 
-A full-3D open-world crime game for the [Make GTA 6 bounty on make.fun](https://make.fun/bounty/gta6-01) — a Vice City-inspired bay rendered in Three.js, with a low third-person chase camera, arcade car physics, lane-graph traffic, a 6-star wanted system with a police helicopter, a golden-hour city and a sunny beach drive, 15 story missions, vehicle tuning, drivable boats, side jobs, money-van heists, rain and storms, combat, a three-person crew with real abilities, and a dense GTA-style HUD: mission panel with a stage bar, police-response list, rank and respect, weapon slots, armour, car condition, location label and a rotating minimap with GPS.
+A full-3D open-world crime game for the [Make GTA 6 bounty on make.fun](https://make.fun/bounty/gta6-01) — a Vice City-inspired bay rendered in Three.js, with a low third-person chase camera, arcade car physics, lane-graph traffic, a 6-star wanted system with a police helicopter, a golden-hour city and a sunny beach drive, 15 story missions, vehicle tuning, drivable boats, side jobs, money-van heists, rain and storms, combat, a three-person crew with real abilities, and a dense GTA-style HUD: mission panel with a stage bar, police-response list with real RAMMING and ROADBLOCK roles, rank and respect, district standing, weapon slots with icons and a locked Kestrel, armour, car condition, location label and a rotating minimap with a pulsing search-zone ring and GPS.
 
 You are Dante "D" Reyes, a wheelman fresh out of the Old Harbor docks — and Mara is your getaway-driver partner, riding shotgun, calling the turns, and keeping the cops off your bumper. Rosa at the diner, Vince Corso who runs the Sunset Hills crew, and the rival Saltwater crew that wants them both gone. Steal cars. Outrun the law. Take the Bay.
 
@@ -18,6 +19,16 @@ Serve `game/` with any static server — `node serve.ts` then open http://localh
 - **Mouse** — aim. **Click** — shoot. **F** — punch. **1–6** — switch weapon
 - **R / Q** — next / previous radio station (it keeps playing on foot, through the phone)
 - **C** — phone (social feed + contacts). **G** — garage menu. **P** — pause. **M** — mute
+
+## What's new in v15 (closer camera, weapon icons, standing, roadblocks, search ring, denser scenes)
+<!-- v15 re-record: this section re-authored verbatim under a fresh recording -->
+
+- **Bigger car in frame, lower camera** — the chase camera moved from 7.5 m back / 3.1 m up to 5.6 m back / 2.5 m up, and the speed FOV pull is gentler (60→72 instead of 60→78), so the player's car or boat dominates the frame like the top entries' — without clipping through buildings (the camera push-out still applies).
+- **Weapon slot icons + a locked Kestrel** — every weapon slot now shows a distinct SVG silhouette (pistol, SMG, shotgun, rifle, AR-9, Breaker) with its ammo count, plus a seventh greyed slot: the Kestrel, a locked prototype rifle that is not for sale yet — display only, never in the shop, never selectable.
+- **District standing** — the HUD shows a standing bar under the location label ("NEUTRAL 58"): each district starts at 50 and rises by 4 for every mission or courier job finished there (caps at 100), with tiers HOSTILE / COLD / NEUTRAL / FRIENDLY / ALLY. It saves and loads with the game.
+- **RAMMING + ROADBLOCK police** — the dispatch board now shows the cops' real behaviour: a cruiser right on the player's bumper drives straight into them (RAMMING), and at 4+ stars two cruisers break off and park across the road ahead (ROADBLOCK), re-tracking every 3 s while the player is seen and releasing when the player breaks sight. The block is anchored on the cops' last-seen position, not the live player — a live-tracking block would park on top of a hiding player and pin them forever. The boat shot now brings 6 cruisers to the shore (was 3).
+- **Minimap search-zone ring** — while the player is IN SIGHT or being chased, a red pulsing ring follows them on the minimap (the escaping circle on the last-seen spot is still there when the player is hiding).
+- **Denser, more dramatic scenes** — 96 pedestrians city-wide (was 64) and 40 scene peds per shot (was 24), 36 parked cars and 20 traffic cars (was 24/14), 10 traffic cars per shot (was 6); the beach has 14 umbrellas + towels and beachgoers on the sand; a road bridge crosses the water channel at x=360 (boats pass under it); and the night shot has a burning car 35 m ahead on The Strip with a flickering orange flame cone and a live smoke column (the flame is unlit material, so it reads at night — dark smoke alone was invisible).
 
 ## What's new in v14 (tuning, boats, 15 missions, night neon)
 

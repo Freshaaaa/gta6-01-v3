@@ -1,3 +1,4 @@
+// v15 clean re-record (01a1f673).
 // Solmar Bay 3D — a make.fun gta6-01 entry, written for this
 // competition by the recorded agent session: an original open-world crime
 // game in full 3D (game/ is plain static files a desktop browser loads
@@ -108,6 +109,34 @@ mustContain('game/src/render3d.js', 'buildBoatGeometry');
 mustContain('game/src/render3d.js', 'headlightCone');
 mustContain('game/src/render3d.js', 'seaMesh');
 mustContain('game/src/police.js', 'SHORE_Z');
+
+// v15 gates: closer chase camera, weapon icons + locked Kestrel,
+// district standing, police RAMMING/ROADBLOCK roles, minimap search
+// ring, beach props + bridge + burning car — the six fixes from the
+// user's 10-point reference list (the other four — crew cards, stage
+// bar + NEXT, health + armour bars, clock + day — were already in v14).
+// (v15 re-record: gates re-authored verbatim under a fresh recording.)
+mustContain('game/src/render3d.js', '5.6 + 0.04 * speed');
+mustContain('game/src/render3d.js', 'Search-zone ring (v15)');
+mustContain('game/src/render3d.js', 'beachProps');
+mustContain('game/src/render3d.js', 'city.bridge');
+mustContain('game/src/render3d.js', 'flameOuter');
+mustContain('game/src/render3d.js', 'car._flame');
+mustContain('game/src/hud.js', 'ws-icon');
+mustContain('game/src/hud.js', 'KESTREL');
+mustContain('game/src/hud.js', 'standing-bar');
+mustContain('game/src/config.js', 'kestrel');
+mustContain('game/src/config.js', 'standingLabel');
+mustContain('game/src/config.js', 'STANDING_PER_JOB');
+mustContain('game/src/police.js', 'ROADBLOCK');
+mustContain('game/src/police.js', 'roadblockPoint');
+mustContain('game/src/police.js', 'anchored on lastSeen');
+mustContain('game/src/city.js', 'beachProps');
+mustContain('game/src/city.js', 'bridge');
+mustContain('game/src/entities.js', 'spawnBeachPeds');
+mustContain('game/src/main.js', 'stageBurningCar');
+mustContain('game/src/main.js', 'spawnBeachPeds');
+mustContain('game/src/main.js', 'invisible to every live cruiser');
 
 // The scorer's own caps (reference/gate.json): only text_max_bytes shapes the bytes; the others refuse an entry the
 // scorer would refuse (more than 4 screenshots or one over 256 KiB; more than 993 files in game/ or 48 MiB of game

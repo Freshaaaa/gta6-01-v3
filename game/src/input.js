@@ -1,3 +1,4 @@
+// v15 clean re-record (01a1f673).
 // Solmar Bay 3D — keyboard + mouse input. Tracks held keys,
 // edge-triggered presses (so E / P / C / G / R fire once per tap), and
 // the mouse position in normalized device coordinates (main.js turns it

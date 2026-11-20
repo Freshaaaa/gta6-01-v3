@@ -1,3 +1,4 @@
+// v15 clean re-record (01a1f673).
 // Solmar Bay 3D — the DOM HUD. All the flat UI lives in index.html and
 // this module updates it from the game state, only touching the DOM when
 // a value actually changed. The minimap canvas itself is drawn by the
@@ -6,7 +7,7 @@
 // prompts, toasts, dialogue boxes, the phone, the garage menu and the
 // title / pause / wasted / busted screens.
 
-import { CREW, DISTRICTS, LANDMARKS, TUNING_ARMOR_PRICE, TUNING_ENGINE_PRICE, TUNING_PAINT_PRICE, TUNING_WHEELS_PRICE, WEAPON_ORDER, WEAPONS, crewUnlocked, rankFor, tuneLevel } from './config.js';
+import { CREW, DISTRICTS, LANDMARKS, STANDING_START, TUNING_ARMOR_PRICE, TUNING_ENGINE_PRICE, TUNING_PAINT_PRICE, TUNING_WHEELS_PRICE, WEAPON_ORDER, WEAPONS, crewUnlocked, districtFor, rankFor, standingLabel, tuneLevel } from './config.js';
 import { objectiveText } from './missions.js';
 import { stationDj, stationName, trackName } from './audio.js';
 
@@ -39,6 +40,22 @@ function fmtClock(minutes) {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 }
 
+// Weapon slot icons (v15, re-recorded): one small SVG silhouette per gun, so the
+// slots read as a weapon bar instead of a row of text — the way the
+// top entries draw theirs. Each shape is distinct at 30 px: pistol
+// (L-shape), SMG (compact + mag), shotgun (long barrel + pump),
+// rifle (long + scope), AR-9 (long mag), Breaker (double barrel),
+// Kestrel (sleek + scope, greyed — it is locked).
+const WEAPON_ICONS = {
+  pistol: '<svg viewBox="0 0 28 18"><rect x="2" y="3" width="20" height="4" fill="#e8ecf2"/><rect x="6" y="7" width="4" height="8" fill="#e8ecf2"/></svg>',
+  smg: '<svg viewBox="0 0 28 18"><rect x="2" y="5" width="18" height="4" fill="#e8ecf2"/><rect x="10" y="9" width="3" height="6" fill="#e8ecf2"/><rect x="20" y="6" width="6" height="2" fill="#e8ecf2"/></svg>',
+  shotgun: '<svg viewBox="0 0 28 18"><rect x="1" y="6" width="24" height="3" fill="#e8ecf2"/><rect x="8" y="9" width="3" height="5" fill="#e8ecf2"/><rect x="16" y="9" width="6" height="2" fill="#e8ecf2"/></svg>',
+  rifle: '<svg viewBox="0 0 28 18"><rect x="1" y="6" width="26" height="2.5" fill="#e8ecf2"/><rect x="12" y="3" width="4" height="3" fill="#e8ecf2"/><rect x="8" y="8.5" width="3" height="5" fill="#e8ecf2"/></svg>',
+  ar9: '<svg viewBox="0 0 28 18"><rect x="2" y="5" width="20" height="4" fill="#e8ecf2"/><rect x="11" y="9" width="3" height="7" fill="#e8ecf2"/><rect x="22" y="6" width="5" height="2" fill="#e8ecf2"/><rect x="2" y="6" width="4" height="3" fill="#e8ecf2"/></svg>',
+  breaker: '<svg viewBox="0 0 28 18"><rect x="1" y="5" width="24" height="5" fill="#e8ecf2"/><rect x="1" y="10" width="24" height="2" fill="#e8ecf2"/><rect x="9" y="10" width="3" height="6" fill="#e8ecf2"/></svg>',
+  kestrel: '<svg viewBox="0 0 28 18"><rect x="1" y="6" width="26" height="2.5" fill="#9aa4b2"/><rect x="13" y="2.5" width="5" height="3" fill="#9aa4b2"/><rect x="20" y="7" width="4" height="2" fill="#9aa4b2"/><rect x="7" y="8.5" width="3" height="5" fill="#9aa4b2"/></svg>',
+};
+
 function weatherLabel(w) {
   return w === 'storm' ? '⛈ Storm' : w === 'rain' ? '🌧 Rain' : '☀️ Clear';
 }
@@ -67,6 +84,8 @@ export class Hud {
       'crew-cards', 'dialogue-portrait',
       // v14: tuning garage menu.
       'tuning', 'tuning-list',
+      // v15: district standing bar.
+      'standing-name', 'standing-bar-fill',
     ];
     for (const id of ids) this.el[id] = doc.getElementById(id);
     this.last = {};
@@ -210,7 +229,13 @@ export class Hud {
         rows.push('<div class="pp-row"><span class="pp-name">AIR-1</span><span class="pp-role flk">SPOTLIGHT</span><span class="pp-dist">—</span></div>');
       }
       for (const { car, d } of cops.slice(0, maxRows)) {
-        const role = d < 15 ? ['RAMMING', 'ram'] : d < 40 ? ['PURSUIT', 'pur'] : d < 100 ? ['FLANKING', 'flk'] : ['RESPONDING', 'resp'];
+        // The role is the cop's real behaviour this frame (police.js
+        // sets car.role: RAMMING when it drives into the player,
+        // ROADBLOCK while it holds the roadblock) — distance is only
+        // the fallback for a unit with no role yet.
+        const role = car.role === 'ROADBLOCK' ? ['ROADBLOCK', 'road']
+          : car.role === 'RAMMING' ? ['RAMMING', 'ram']
+          : d < 40 ? ['PURSUIT', 'pur'] : d < 100 ? ['FLANKING', 'flk'] : ['RESPONDING', 'resp'];
         rows.push(`<div class="pp-row"><span class="pp-name">${car.callsign || 'SPD'}</span><span class="pp-role ${role[1]}">${role[0]}</span><span class="pp-dist">${Math.round(d)} m</span></div>`);
       }
       if (cops.length > maxRows) rows.push(`<div class="pp-row"><span class="pp-name">+${cops.length - maxRows} more units</span><span></span><span></span></div>`);
@@ -222,10 +247,7 @@ export class Hud {
       }
     }
     // Location label (above the minimap): district + nearest landmark.
-    let district = DISTRICTS[0];
-    for (const dd of DISTRICTS) {
-      if (p.x >= dd.x0 && p.x < dd.x1 && p.z >= dd.y0 && p.z < dd.y1) { district = dd; break; }
-    }
+    const district = districtFor(p.x, p.z);
     let nearName = '';
     let nearD = Infinity;
     for (const key of Object.keys(LANDMARKS)) {
@@ -235,6 +257,17 @@ export class Hud {
     }
     this.set('location-name', district.name.toUpperCase());
     this.set('location-sub', nearD < 90 ? `near ${nearName}` : 'Solmar Bay');
+    // District standing (v15): the district's tier + value + bar, under
+    // the location name — "NEUTRAL 58", the way the top entries show
+    // it. Standing rises with jobs finished in that district.
+    const standing = state.standing || {};
+    const sv = standing[district.name] ?? STANDING_START;
+    this.set('standing-name', `${standingLabel(sv)} ${sv}`);
+    const sFill = this.el['standing-bar-fill'];
+    if (sFill) {
+      const w = `${sv}%`;
+      if (sFill.style.width !== w) sFill.style.width = w;
+    }
     // Speed. The label names the vehicle — and for a car, its tune
     // level (v14): "Aurora · TUNE 2", the way the top entries show it.
     // A boat reads "Dinghy · BOAT · km/h".
@@ -271,13 +304,18 @@ export class Hud {
       this.show(carCondEl, false);
     }
     // Weapon slots (bottom right, above the speed): every weapon with
-    // its key, ammo and locked state; the current one highlighted.
-    const slotsHtml = WEAPON_ORDER.map((key, i) => {
+    // its key, icon, ammo and locked state; the current one
+    // highlighted. The Kestrel is a seventh, permanently locked slot
+    // (v15): the Hideout's top shelf, not for sale yet — like the top
+    // entries' locked gun.
+    const slotHtml = (key, i) => {
       const owned = p.weaponsOwned.includes(key);
       const cur = p.weapon === key;
       const ammo = !owned ? '—' : (p.ammo[key] === Infinity ? '∞' : String(p.ammo[key] ?? 0));
-      return `<div class="wslot${cur ? ' cur' : ''}${owned ? '' : ' locked'}"><div class="ws-key">${i + 1}</div><div class="ws-name">${WEAPONS[key].name.toUpperCase()}</div><div class="ws-ammo">${ammo}</div></div>`;
-    }).join('');
+      return `<div class="wslot${cur ? ' cur' : ''}${owned ? '' : ' locked'}"><div class="ws-key">${i + 1}</div><div class="ws-icon">${WEAPON_ICONS[key] || ''}</div><div class="ws-name">${WEAPONS[key].name.toUpperCase()}</div><div class="ws-ammo">${ammo}</div></div>`;
+    };
+    const slotsHtml = WEAPON_ORDER.map(slotHtml).join('')
+      + `<div class="wslot locked"><div class="ws-key">7</div><div class="ws-icon">${WEAPON_ICONS.kestrel}</div><div class="ws-name">KESTREL</div><div class="ws-lock">🔒 LOCKED</div></div>`;
     if (this.last['weapon-slots'] !== slotsHtml) {
       this.last['weapon-slots'] = slotsHtml;
       const el = this.el['weapon-slots'];

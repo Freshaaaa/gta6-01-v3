@@ -1,3 +1,4 @@
+// v15 clean re-record (01a1f673).
 // Solmar Bay 3D — save / load through localStorage. Saves the player's
 // cash, reputation, collectibles, weapons, health, ammo, wanted heat,
 // position, mission progress, garage, money-van heists and the clock, so
@@ -32,6 +33,8 @@ export function saveGame(state) {
       coinsTaken: state.city.coins.map((c) => c.taken),
       garage: state.garage,
       vansRobbed: state.vansRobbed,
+      // District standing (v15, re-recorded): saved with the rest of the profile.
+      standing: state.standing || {},
       feed: state.feed.slice(0, 6),
       shopCycle: state.shopCycle,
     };

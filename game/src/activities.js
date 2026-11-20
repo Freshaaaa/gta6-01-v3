@@ -1,3 +1,4 @@
+// v15 clean re-record (01a1f673).
 // Solmar Bay 3D — side activities. Everything outside the story
 // missions lives here: taxi fares, street races, sun-coin collectibles
 // (see entities.js), the docks chop shop, the Hideout weapon shop,
