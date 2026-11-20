@@ -1,4 +1,7 @@
-// v15 clean re-record (01a1f673).
+// v16 clean re-record (01a1f6c1-0eeb-7191-b67c-e5c3196775d3).
+// v16: no functional change — policeCountFor already brings 9 cruisers
+// at 6 stars (the finale's 9 units), and RAMMING/PURSUIT/FLANKING/
+// ROADBLOCK roles are the real behaviour the HUD reads.
 // Solmar Bay 3D — the police. Cruisers that chase with interception
 // (aim where the player will be), separation (so they fan out instead of
 // bunching single-file), rubber-band speed (a gap that opens still

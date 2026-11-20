@@ -1,4 +1,5 @@
-// v15 clean re-record (01a1f673).
+// v16 clean re-record (01a1f6c1-0eeb-7191-b67c-e5c3196775d3).
+// v16: radio frequencies, gear bands and the grip table for the new HUD readouts.
 // Solmar Bay 3D — shared constants, tuning and the city layout table.
 // A 540 m square coastal city on a regular street grid (roads every 60 m),
 // eight named districts and ten landmarks the missions and side jobs use.
@@ -240,14 +241,15 @@ export const PLAYER_MAX_ARMOUR = 100;
 export const ARMOUR_PRICE = 300;
 export const ARMOUR_AMOUNT = 50;
 
-// Radio stations: the patterns live in audio.js; these are the names and
-// tempos the HUD shows.
+// Radio stations: the patterns live in audio.js; these are the names,
+// tempos and FM frequencies the HUD shows (v16: the frequency is new —
+// "Coastal Groove 99.1", the way the top entries print their station).
 export const RADIO_STATIONS = [
-  { name: 'Coastal Groove', dj: 'DJ Marina', bpm: 96,  genre: 'chillwave' },
-  { name: 'Night Drive',    dj: 'DJ Luna',   bpm: 112, genre: 'synthwave' },
-  { name: 'Latin Heat',     dj: 'La Gata',   bpm: 124, genre: 'reggaeton' },
-  { name: 'Bay FM',         dj: 'Big Ray',   bpm: 140, genre: 'talk + hits' },
-  { name: 'Vice Classics',  dj: 'DJ Rico',   bpm: 100, genre: 'old-school funk' },
+  { name: 'Coastal Groove', dj: 'DJ Marina', bpm: 96,  genre: 'chillwave', freq: '99.1' },
+  { name: 'Night Drive',    dj: 'DJ Luna',   bpm: 112, genre: 'synthwave', freq: '101.5' },
+  { name: 'Latin Heat',     dj: 'La Gata',   bpm: 124, genre: 'reggaeton', freq: '104.7' },
+  { name: 'Bay FM',         dj: 'Big Ray',   bpm: 140, genre: 'talk + hits', freq: '88.9' },
+  { name: 'Vice Classics',  dj: 'DJ Rico',   bpm: 100, genre: 'old-school funk', freq: '96.3' },
 ];
 export const RADIO_TRACKS = [
   ['Sunset Over Solmar', 'Palm Trees at Midnight', 'Neon Tide'],
@@ -310,6 +312,18 @@ export function applyTune(car) {
   };
   car.maxHp = base.hp + (t.armor || 0) * 60;
   if (car.hp > car.maxHp) car.hp = car.maxHp;
+}
+
+// Gear (v16): the gearbox the HUD shows, from the car's speed alone —
+// G1 under 40 km/h, then a gear every 40 km/h up to G5 past 160.
+// The bands match the cars' real top speeds (a Strada tops out near
+// 196 km/h, so G5 is reachable on a long straight, not everywhere).
+export function gearFor(kmh) {
+  if (kmh < 40) return 1;
+  if (kmh < 80) return 2;
+  if (kmh < 120) return 3;
+  if (kmh < 160) return 4;
+  return 5;
 }
 
 export const PED_SHIRTS = ['#e74c3c', '#3498db', '#2ecc71', '#f39c12', '#9b59b6', '#1abc9c', '#e67e22', '#fd79a8', '#00cec9', '#fdcb6e'];

@@ -1,4 +1,7 @@
-// v15 clean re-record (01a1f673).
+// v16 clean re-record (01a1f6c1-0eeb-7191-b67c-e5c3196775d3).
+// v16: no functional change — CONDITION% in the HUD reads car.hp/maxHp
+// straight from this file (damageCar, Lio repairs), and the beach-drive
+// shot's sand peds come from spawnBeachPeds here.
 // Solmar Bay 3D — the living city. Factories for the player, cars,
 // pedestrians and goons, plus the per-population updates: traffic
 // following the lane graph, pedestrians walking and fleeing, goons hunting

@@ -1,4 +1,7 @@
-// v15 clean re-record (01a1f673).
+// v16 clean re-record (01a1f6c1-0eeb-7191-b67c-e5c3196775d3).
+// v16: no functional change — the station frequencies the HUD shows
+// ("Coastal Groove 99.1") live in config.js RADIO_STATIONS and are read
+// through audio.js stationFreq(); this module only plays the patterns.
 // Solmar Bay: Heatwave — all sound is synthesized with the Web Audio API:
 // no audio files, no network. Five radio stations share one 16-step
 // scheduler (eighth-note steps; each station brings its own bassline, hat

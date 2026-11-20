@@ -1,4 +1,6 @@
-// v15 clean re-record (01a1f673).
+// v16 clean re-record (01a1f6c1-0eeb-7191-b67c-e5c3196775d3).
+// v16: no functional change — side income here (taxi, race, van, chop)
+// is untouched, so the v16 shot money math still holds as documented.
 // Solmar Bay 3D — side activities. Everything outside the story
 // missions lives here: taxi fares, street races, sun-coin collectibles
 // (see entities.js), the docks chop shop, the Hideout weapon shop,

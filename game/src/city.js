@@ -1,4 +1,5 @@
-// v15 clean re-record (01a1f673).
+// v16 clean re-record (01a1f6c1-0eeb-7191-b67c-e5c3196775d3).
+// v16: surfaceAt + gripForSurface — the HUD grip and the sand physics read the same terrain.
 // Solmar Bay 3D — the city itself. A seeded generator lays a 9x9 street
 // grid over the world, fills each block with buildings (palettes per
 // district, towers downtown, neon signs on the Strip), parks and trees,
@@ -36,6 +37,35 @@ export function isOnRoad(x, z) {
     if (Math.abs(z - r) <= ROAD_WIDTH / 2 + 1.5) return true;
   }
   return false;
+}
+
+// The sand band (v16): the ground texture in render3d.js paints sand
+// at z 512–526 and sea at z 526–540, so those are the bands surfaceAt
+// reports — the same ground the player sees.
+export const SAND_Z_MIN = 512;
+export const SAND_Z_MAX = 526;
+
+// Surface (v16): what the ground is at (x, z) — the single source of
+// truth for both the HUD grip readout and the physics. Sand is the
+// beach band, water is the sea, road is the street grid, everything
+// else is off-road (sidewalks, plazas, parks). Sand is checked first:
+// the south road's edge (z 512–517) is visually sand.
+export function surfaceAt(x, z) {
+  if (z >= SAND_Z_MIN && z < SAND_Z_MAX) return 'sand';
+  if (z >= SAND_Z_MAX) return 'water';
+  if (isOnRoad(x, z)) return 'road';
+  return 'offroad';
+}
+
+// Grip (v16): how much traction a surface gives, as a percentage — the
+// number the HUD shows next to the gear. Asphalt grips (100%), sand
+// slides (55%), off-road is in between (75%), water is a boat's
+// element (40% for a car that somehow gets there).
+export function gripForSurface(surface) {
+  if (surface === 'road') return 100;
+  if (surface === 'sand') return 55;
+  if (surface === 'offroad') return 75;
+  return 40;
 }
 
 /** Distance from (x, z) to the nearest road centre line. */

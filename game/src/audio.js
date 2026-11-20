@@ -1,4 +1,5 @@
-// v15 clean re-record (01a1f673).
+// v16 clean re-record (01a1f6c1-0eeb-7191-b67c-e5c3196775d3).
+// v16: stationFreq() — the HUD radio ticker shows the station's frequency.
 // Solmar Bay 3D — all sound is synthesized with the Web Audio API: no
 // audio files, no network. Five radio stations share one 16-step
 // scheduler (eighth-note steps; each station brings its own bassline, hat
@@ -153,6 +154,13 @@ export function prevStation() {
 
 export function stationName() {
   return RADIO_STATIONS[station].name;
+}
+
+/** The FM frequency of the station currently playing (v16) — the HUD
+ * radio ticker shows "Coastal Groove 99.1", the way the top entries
+ * print their station. */
+export function stationFreq() {
+  return RADIO_STATIONS[station].freq || '';
 }
 
 export function stationDj() {

@@ -1,11 +1,15 @@
-<!-- v15 clean re-record (01a1f673). -->
+<!-- v16 clean re-record (01a1f6c1-0eeb-7191-b67c-e5c3196775d3). -->
+<!-- v16: new "What's new in v16" section; story money corrected to
+     $109,200 and sun coins to $75 (both were stale v13/v14 figures);
+     tech note updated for the m15 finale night shot and the beach-drive
+     chase shot. -->
 [![make.fun · gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![rank](https://make.fun/badge/gta6-01/Freshaaaa/gta6-01-v3/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![reward](https://make.fun/badge/gta6-01/Freshaaaa/gta6-01-v3/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 
-# Solmar Bay 3D — Crowded Streets v15
+# Solmar Bay 3D — Crowded Streets v16
 
-A full-3D open-world crime game for the [Make GTA 6 bounty on make.fun](https://make.fun/bounty/gta6-01) — a Vice City-inspired bay rendered in Three.js, with a low third-person chase camera, arcade car physics, lane-graph traffic, a 6-star wanted system with a police helicopter, a golden-hour city and a sunny beach drive, 15 story missions, vehicle tuning, drivable boats, side jobs, money-van heists, rain and storms, combat, a three-person crew with real abilities, and a dense GTA-style HUD: mission panel with a stage bar, police-response list with real RAMMING and ROADBLOCK roles, rank and respect, district standing, weapon slots with icons and a locked Kestrel, armour, car condition, location label and a rotating minimap with a pulsing search-zone ring and GPS.
+A full-3D open-world crime game for the [Make GTA 6 bounty on make.fun](https://make.fun/bounty/gta6-01) — a Vice City-inspired bay rendered in Three.js, with a low third-person chase camera, arcade car physics, lane-graph traffic, a 6-star wanted system with a police helicopter, a golden-hour city and a sunny beach drive, 15 story missions, vehicle tuning, drivable boats, side jobs, money-van heists, rain and storms, combat, a three-person crew with real abilities, and a dense GTA-style HUD: mission panel with a stage bar, police-response list with real RAMMING and ROADBLOCK roles, rank and respect, district standing, weapon slots with icons and a locked Kestrel, armour, car condition, gear and grip, location label and a rotating minimap with a pulsing search-zone ring and GPS.
 
 You are Dante "D" Reyes, a wheelman fresh out of the Old Harbor docks — and Mara is your getaway-driver partner, riding shotgun, calling the turns, and keeping the cops off your bumper. Rosa at the diner, Vince Corso who runs the Sunset Hills crew, and the rival Saltwater crew that wants them both gone. Steal cars. Outrun the law. Take the Bay.
 
@@ -19,6 +23,16 @@ Serve `game/` with any static server — `node serve.ts` then open http://localh
 - **Mouse** — aim. **Click** — shoot. **F** — punch. **1–6** — switch weapon
 - **R / Q** — next / previous radio station (it keeps playing on foot, through the phone)
 - **C** — phone (social feed + contacts). **G** — garage menu. **P** — pause. **M** — mute
+
+## What's new in v16 (round minimap, gear + grip HUD, m15 finale, beach drive, radio ticker, deeper golden hour)
+
+- **Round minimap + dashed search rings** — the minimap was already circular in the canvas clip; now both search rings on it are dashed red lines (the chasing ring around the player and the escaping circle on the last-seen spot), so they read as a search boundary instead of a solid wall. The ring still pulses while the player is seen or chased.
+- **Gear + grip in the HUD** — under the speed, the car line now shows the gear (G1–G5 from real speed: under 40 km/h is G1, 160+ is G5) and the grip % of the surface under the wheels (100% on road, 75% off-road, 55% on sand, 40% on water), next to the car-condition % that was already there (real hp/maxHp — collisions and Lio's repairs move it). Sand genuinely grips less: acceleration drops and the car slides wider on the beach.
+- **The night shot is the m15 finale** — the fourth screenshot now stages the last mission, The Last Tide, at its real final step (STAGE 6/6) with a ★ FINAL tag in the mission panel: 21:45 on The Strip in the tuned Strada, 5 stars, 8 cruisers plus the helicopter, and $88,100 — the money a player would honestly hold by then (mission rewards through m14 plus side income, minus the $800 spent tuning the Strada). The finale's 9th police unit is the helicopter, AIR-1 on the dispatch board.
+- **Bigger late-game money** — the fleet-arc rewards grew (m11 $8,000, m12 $12,000, m13 $18,000, m14 $19,000, m15 $25,000), so story money now grows to $109,200. Every screenshot's money is still the sum of real rewards and side jobs — never a faked number.
+- **A beach drive** — the chase shot is now the car driving on the sand itself at golden hour (17:30), past umbrellas and beachgoers, with the sea behind it — the terrain system knows the sand (z 512–526) and the car really drives there.
+- **Radio station + frequency in the HUD** — the ticker under the speed now names the station playing, with its frequency: "♪ Coastal Groove 99.1 — track · DJ". R/Q still switch stations.
+- **Deeper golden hour** — tone-mapping exposure up (1.12), the sun sits lower so shadows stretch longer, and the dusk sky is a deeper orange. The flame cone on a burning car, the ROADBLOCK and the red search ring still read in the new light, and every screenshot stays under the 256 KiB cap.
 
 ## What's new in v15 (closer camera, weapon icons, standing, roadblocks, search ring, denser scenes)
 <!-- v15 re-record: this section re-authored verbatim under a fresh recording -->
@@ -34,20 +48,20 @@ Serve `game/` with any static server — `node serve.ts` then open http://localh
 
 - **Vehicle tuning — real, not a label** — Lio's Tuning Garage on Palm Court (E in a car there) sells four upgrades for the car you're driving: engine (+8% top speed, +5% accel per level, $400), armour plating (+60 max HP per level, $300), racing wheels (+5% turn per level, $200) and respray ($150). Every purchase spends real money and recomputes the car's stats from its base model, so a tuned car genuinely drives faster and turns sharper — and the HUD shows it next to the speed ("Aurora · TUNE 2"). The Hideout garage stores the tune with the car and can upgrade wheels too.
 - **Drivable boats** — the sea is no longer scenery. A Dinghy is moored at the Marina Pier and a fast Speedboat by the Lighthouse; walk to the waterline, press E, and sail the coast with real boat physics (throttle, steering, wake spray, the water band clamping the boat to the sea). The police cruisers can't follow you onto the water — they hold the shoreline and watch, while the helicopter still follows. Boats show on the minimap as cyan dots.
-- **15 story missions** — the fleet arc (m11–m15) continues after the King of the Bay finale: Tuned Up (tune a car, prove it on the street), Harbor Lights (first sea run in the Dinghy), The Smuggler's Run (grab the crate, run the whole coast with the cops on the shore), Tune Wars (steal a Strada, tune it to TUNE 2, beat the rival), and The Last Tide (chase Tide down the coast in the Speedboat, finish it on the pier). Story money grows to $54,700; rank S (King of the Bay) is reachable at 150 rep.
+- **15 story missions** — the fleet arc (m11–m15) continues after the King of the Bay finale: Tuned Up (tune a car, prove it on the street), Harbor Lights (first sea run in the Dinghy), The Smuggler's Run (grab the crate, run the whole coast with the cops on the shore), Tune Wars (steal a Strada, tune it to TUNE 2, beat the rival), and The Last Tide (chase Tide down the coast in the Speedboat, finish it on the pier). Story money grows to $109,200; rank S (King of the Bay) is reachable at 150 rep.
 - **A night neon shot** — one of the four screenshots is now 21:45 on The Strip: neon signs and lamps glowing, the tuned Aurora's headlights throwing a beam and a pool of light on the road, 4 stars with the helicopter up. The boat run replaces the beach drive as the daytime coastal shot.
 - **The player rides their vehicle** — fixed the bug where the car moved but the player position never followed it: the chase camera, mission `goto` steps and police pursuit now all track the driven car (and boat).
 
 ## What's new in v13 (rank, crew, portraits, beach, bigger money)
 
-- **Bigger, honest money** — mission rewards grow through the story (m1 $300 → m10 $8,000) and side income pays more (courier $250, sun coins $150, money van $800, chop shop $600), so a player reaching the late missions honestly holds ~$18,000–$25,000 — the money in the screenshots is the sum of the rewards and side jobs a player would really have earned by that mission, never a faked number.
+- **Bigger, honest money** — mission rewards grow through the story (m1 $300 → m10 $8,000) and side income pays more (courier $250, sun coins $75, money van $800, chop shop $600), so a player reaching the late missions honestly holds ~$18,000–$25,000 — the money in the screenshots is the sum of the rewards and side jobs a player would really have earned by that mission, never a faked number.
 - **Rank, respect and day** — the HUD shows a rank (ROOKIE → HUSTLER → FIXER → SHOT CALLER → KING OF THE BAY) with an RP bar, computed from real reputation (+10 per mission, +2 per goon), and a DAY counter that ticks as the story and the clock advance.
 - **A crew with real abilities** — Mara (Driver, always with you) makes your car faster and sharper; Lio (Mechanic, joins after Getaway Driver) slowly repairs your car; Kiki (Lookout, joins after Static) puts every police unit on the minimap and on the dispatch list, with a COP NEAR warning. The HUD shows the three crew cards, locked ones greyed until their job unlocks them.
 - **Dialogue portraits** — every speaker gets a distinct SVG face next to their line (Mara, Vince, Rosa, Dante).
 - **More police** — a 4-star chase now brings 6 cruisers plus the helicopter, a full 6-star manhunt brings 9, and the dispatch list names them all.
 - **A sunny beach drive** — one of the four shots is now bright daytime (15:00) down the beach road past the sand, the sea, the pier and the lighthouse, like the top entries' beach scenes.
 - **Armour, stage bar, IN SIGHT** — a body-armour bar next to health (armour absorbs damage first; buy it at the Hideout shop), a segmented stage-progress bar in the mission panel, and an IN SIGHT / SEARCHING badge that shows the real line-of-sight state.
-- **Six weapons** — the AR-9 (unlocks after Getaway Driver) and the Breaker (unlocks after Heatwave) join the pistol, SMG, shotgun and rifle at the Hideout shop; unowned ones show LOCKED in the six weapon slots.
+- **Six weapons** — the AR-9 (unlocks after Getaway Driver) and the Breaker (unlocks after Heatwave) join the pistol, SMG, shotgun, rifle at the Hideout shop; unowned ones show LOCKED in the six weapon slots.
 
 ## What's new in v12 (chase cam + dense HUD + golden hour)
 
@@ -79,7 +93,7 @@ Every line of the game is original code written for this competition — the cit
 
 - Plain ES modules, no bundler: `game/index.html` maps `three` to a pinned CDN (three@0.160.0) with an import map and loads `game/src/main.js`, which imports Three.js from `'three'`.
 - Fixed 60 Hz simulation, decoupled rendering; seeded city generation (`?seed=N` reproduces a city).
-- `?shot=start|drive|chase|beach|heli|boat|night` stages a scene for screenshots and sets `window.__shotReady`; `window.__solmar` exposes the debug API the playtest drives. The chase/heli shots run the pursuit simulation forward with the player car frozen, so the cruisers and helicopter are in frame, then snap the camera onto the chase framing. The boat shot stages the Dinghy on the water with the cruisers holding the shore; the night shot stages the tuned Aurora on The Strip at 21:45 with headlights on.
+- `?shot=start|drive|chase|beach|heli|boat|night` stages a scene for screenshots and sets `window.__shotReady`; `window.__solmar` exposes the debug API the playtest drives. The chase/heli shots run the pursuit simulation forward with the player car frozen, so the cruisers and helicopter are in frame, then snap the camera onto the chase framing. The boat shot stages the Dinghy on the water with the cruisers holding the shore; the night shot is now the m15 finale — The Last Tide, step 6/6, in the tuned Strada on The Strip at 21:45 with headlights on, 5 stars and 8 cruisers plus the helicopter. The chase shot is the golden-hour beach drive: the car on the sand at z 518 with beachgoers and umbrellas in frame.
 - `node serve.ts --port 8080` serves `game/` locally; `node main.ts` (or `MAKEFUN_OUTPUT_DIR=out node main.ts`) builds the hand-in in `/output` with `dossier.json`. main.ts also gates the hand-in: all four screenshots must exist and be under 256 KiB, and the chase-cam / dense-HUD code must be present in the sources.
 
 ## License

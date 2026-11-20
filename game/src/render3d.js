@@ -1,4 +1,6 @@
-// v15 clean re-record (01a1f673).
+// v16 clean re-record (01a1f6c1-0eeb-7191-b67c-e5c3196775d3).
+// v16: dashed search rings on the minimap, deeper golden hour (exposure
+// 1.12, sun floor 0.12, warmer dusk sky) for longer shadows and richer colour.
 // Solmar Bay 3D — the Three.js board. Builds the scene once from the
 // seeded city (ground texture, instanced buildings/windows/neon/trees/
 // lamps, pier, lighthouse, fountain) and syncs every dynamic object from
@@ -382,7 +384,7 @@ export class Board {
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.toneMappingExposure = 1.12;
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color('#87b5e0');
     this.scene.fog = new THREE.Fog('#a8c4de', 200, 650);
@@ -1368,7 +1370,9 @@ export class Board {
     // Sun azimuth: east at dawn, west at dusk. The elevation floor keeps
     // the sun high enough to still graze the streets at golden hour —
     // below ~8° the ground goes black under a pure grazing light.
-    const sunDir = new THREE.Vector3(Math.cos(az), Math.max(0.15, sunElev), 0.35);
+    // (v16: floor lowered 0.15 -> 0.12, so the sun sits lower and the
+    // shadows stretch longer at golden hour.)
+    const sunDir = new THREE.Vector3(Math.cos(az), Math.max(0.12, sunElev), 0.35);
     sunDir.normalize();
     const px = state.player.x;
     const pz = state.player.z;
@@ -1380,7 +1384,8 @@ export class Board {
     // the hemisphere fill stays up at dusk, or the streets go black under
     // a grazing sun (the ground only catches sunI * sin(elevation)).
     const duskW = clamp(lowSun * (0.3 + 0.7 * dayFactor), 0, 1);
-    const sunCol = new THREE.Color('#ffdcae').lerp(new THREE.Color('#ff8a4c'), lowSun * 0.9);
+    // (v16: the low sun is deeper orange now — more saturated golden hour.)
+    const sunCol = new THREE.Color('#ffdcae').lerp(new THREE.Color('#ff6a2c'), lowSun * 0.9);
     this.sun.color.copy(sunCol);
     let sunI = 2.6 * dayFactor + 0.12;
     if (state.lightning > 0) sunI += state.lightning * 3;
@@ -1388,7 +1393,7 @@ export class Board {
     this.hemi.intensity = 0.3 + 0.75 * dayFactor + 0.35 * duskW + (state.lightning > 0 ? state.lightning * 1.5 : 0);
     // Sky: day blue, dusk orange, night deep blue.
     const daySky = new THREE.Color('#87b5e0');
-    const duskSky = new THREE.Color('#ff9a5c');
+    const duskSky = new THREE.Color('#ff7a3c');
     const nightSky = new THREE.Color('#0b1026');
     const sky = nightSky.clone().lerp(daySky, dayFactor).lerp(duskSky, duskW);
     this.scene.background.copy(sky);
@@ -1595,9 +1600,12 @@ export class Board {
     if (state.wantedState === 'escaping' && state.lastSeen) {
       g.strokeStyle = 'rgba(255,60,60,0.9)';
       g.lineWidth = 2;
+      // Dashed (v16): like the chasing ring, a boundary not a wall.
+      g.setLineDash([6, 4]);
       g.beginPath();
       g.arc((state.lastSeen.x - px) * scale, (state.lastSeen.z - pz) * scale, 55 * scale, 0, Math.PI * 2);
       g.stroke();
+      g.setLineDash([]);
       g.fillStyle = 'rgba(255,60,60,0.15)';
       g.fill();
     }
@@ -1607,14 +1615,17 @@ export class Board {
     // (v15 re-recorded: re-authored verbatim under a fresh recording.)
     // (The escaping circle above is centred on the last-seen spot;
     // this one follows the player, and only shows while seen/chased.)
+    // (v16: the ring is dashed — a search boundary, not a solid wall.)
     if (state.wantedStars > 0 && (state.playerSeen || state.wantedState === 'chasing')) {
       const pulse = 0.55 + 0.3 * Math.sin(performance.now() / 280);
       const rr = 55 * scale * (1 + 0.05 * Math.sin(performance.now() / 280));
       g.strokeStyle = `rgba(255,60,60,${pulse.toFixed(2)})`;
       g.lineWidth = 2.5;
+      g.setLineDash([6, 4]);
       g.beginPath();
       g.arc(0, 0, rr, 0, Math.PI * 2);
       g.stroke();
+      g.setLineDash([]);
       g.fillStyle = 'rgba(255,60,60,0.08)';
       g.fill();
     }

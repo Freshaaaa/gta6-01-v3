@@ -1,4 +1,6 @@
-// v15 clean re-record (01a1f673).
+// v16 clean re-record (01a1f6c1-0eeb-7191-b67c-e5c3196775d3).
+// v16: no functional change — R/Q still cycle the radio station the
+// HUD's ticker names, and every other key binding is untouched.
 // Solmar Bay 3D — keyboard + mouse input. Tracks held keys,
 // edge-triggered presses (so E / P / C / G / R fire once per tap), and
 // the mouse position in normalized device coordinates (main.js turns it

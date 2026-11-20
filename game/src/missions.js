@@ -1,4 +1,5 @@
-// v15 clean re-record (01a1f673).
+// v16 clean re-record (01a1f6c1-0eeb-7191-b67c-e5c3196775d3).
+// v16: the fleet arc pays like an endgame (m11–m15 up, story total $109,200).
 // Solmar Bay 3D — the story. Fifteen missions for Dante "D" Reyes, a
 // wheelman fresh out of the Old Harbor docks, and Mara, his getaway-driver
 // partner — the duo at the heart of the game, Lucia-and-Jason style, in
@@ -255,7 +256,7 @@ export const MISSIONS = [
     id: 'm11',
     title: 'Tuned Up',
     giver: 'Vince Corso',
-    reward: 3000,
+    reward: 8000,
     briefing: [
       "VINCE: The Saltwaters are gone but the crew's cars are slow — and the rivals are already building faster ones.",
       "LIO: My tuning garage is open on Palm Court. Bring me a car and some cash and I'll make it sing — engine, armour, wheels, paint.",
@@ -273,7 +274,7 @@ export const MISSIONS = [
       { type: 'deliver', x: LANDMARKS.hideout.x, z: LANDMARKS.hideout.z, radius: 14, label: 'Bring the tuned car to the Hideout' },
     ],
     complete: [
-      "VINCE: Now THAT is a car. $3,000 — and Lio says the Bay's boats are next.",
+      "VINCE: Now THAT is a car. $8,000 — and Lio says the Bay's boats are next.",
       "LIO: One upgrade and she already pulls harder. Imagine what TUNE 6 feels like.",
     ],
   },
@@ -281,11 +282,11 @@ export const MISSIONS = [
     id: 'm12',
     title: 'Harbor Lights',
     giver: "Rosa — Rosa's Diner",
-    reward: 3500,
+    reward: 12000,
     briefing: [
       "ROSA: A client of mine needs a parcel moved by sea — the roads are crawling with cops since the casino job.",
       "MARA: The Dinghy's at the Marina Pier. Slow, but nobody looks twice at a fishing boat.",
-      'ROSA: Sail the coast, hit the buoys, drop it at the east end. $3,500.',
+      'ROSA: Sail the coast, hit the buoys, drop it at the east end. $12,000.',
     ],
     steps: [
       { type: 'goto', x: LANDMARKS.pier.x, z: LANDMARKS.pier.z, radius: 16, label: 'Go to the Marina Pier' },
@@ -299,7 +300,7 @@ export const MISSIONS = [
       { type: 'deliver', x: 500, z: 533, radius: 12, label: 'Deliver the parcel to the east buoy' },
     ],
     complete: [
-      'ROSA: Delivered, no cops, no questions. $3,500. The sea is the new road, Dante.',
+      'ROSA: Delivered, no cops, no questions. $12,000. The sea is the new road, Dante.',
       'MARA: And the cops watched you sail past from the shore. They can\'t follow a boat.',
     ],
   },
@@ -307,7 +308,7 @@ export const MISSIONS = [
     id: 'm13',
     title: "The Smuggler's Run",
     giver: 'Vince Corso',
-    reward: 5000,
+    reward: 18000,
     briefing: [
       "VINCE: The Saltwaters are running product by sea now — and the cops can't follow a boat. Neither can we, unless you run it.",
       'VINCE: Grab the crate at the pier, take the Dinghy, and run the whole coast to the east buoy. The cops will be on the shore watching you sail past.',
@@ -326,7 +327,7 @@ export const MISSIONS = [
       { type: 'deliver', x: 500, z: 533, radius: 12, label: 'Deliver the crate to the east buoy' },
     ],
     complete: [
-      "VINCE: Five thousand dollars. The cops watched you sail past and couldn't do a thing.",
+      "VINCE: Eighteen thousand dollars. The cops watched you sail past and couldn't do a thing.",
       "VINCE: The Saltwaters are scared now. One of their boys wants to race you for the Bay.",
     ],
   },
@@ -334,7 +335,7 @@ export const MISSIONS = [
     id: 'm14',
     title: 'Tune Wars',
     giver: "Rosa — Rosa's Diner",
-    reward: 6000,
+    reward: 19000,
     briefing: [
       "ROSA: A rival crew's best driver is talking big on the Strip — says no car in the Bay can touch his Strada.",
       'VINCE: Steal a Strada, take it to Lio, and make it TUNE 2 or better. Then beat his checkpoints and shut him up.',
@@ -353,7 +354,7 @@ export const MISSIONS = [
       { type: 'deliver', x: LANDMARKS.hideout.x, z: LANDMARKS.hideout.z, radius: 14, label: 'Bring the tuned Strada to the Hideout' },
     ],
     complete: [
-      "VINCE: Six thousand dollars. The rival's Strada is parked and his mouth is shut.",
+      "VINCE: Nineteen thousand dollars. The rival's Strada is parked and his mouth is shut.",
       'LIO: TUNE 2 and she still had more in her. Imagine TUNE 6.',
     ],
   },
@@ -361,11 +362,11 @@ export const MISSIONS = [
     id: 'm15',
     title: 'The Last Tide',
     giver: 'Vince Corso',
-    reward: 10000,
+    reward: 25000,
     briefing: [
       "VINCE: Tide — the Saltwater lieutenant — is fleeing by speedboat from the Lighthouse, the whole crew's cut in one duffel bag.",
       "MARA: The Speedboat's moored by the Lighthouse. Take it, run him down on the water, then finish it on the pier.",
-      'VINCE: This ends the Saltwaters for good. Ten thousand dollars, and the Bay is yours — really yours this time.',
+      'VINCE: This ends the Saltwaters for good. Twenty-five thousand dollars, and the Bay is yours — really yours this time.',
     ],
     steps: [
       { type: 'goto', x: LANDMARKS.lighthouse.x, z: LANDMARKS.lighthouse.z, radius: 16, label: 'Go to the Lighthouse' },
@@ -381,7 +382,7 @@ export const MISSIONS = [
       { type: 'deliver', x: LANDMARKS.hideout.x, z: LANDMARKS.hideout.z, radius: 14, label: 'Bring the duffel to the Hideout' },
     ],
     complete: [
-      'VINCE: Ten thousand dollars. Tide is done, the Saltwaters are done, the Bay is yours.',
+      'VINCE: Twenty-five thousand dollars. Tide is done, the Saltwaters are done, the Bay is yours.',
       "MARA: Ours, Dante. The Bay is OURS — the streets, the sea, all of it.",
       "ROSA: The Dante special is on the house tonight. Forever.",
       'STORY COMPLETE — Solmar Bay is yours. Courier jobs keep paying at the Hideout.',

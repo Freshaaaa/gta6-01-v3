@@ -1,4 +1,5 @@
-// v15 clean re-record (01a1f673).
+// v16 clean re-record (01a1f6c1-0eeb-7191-b67c-e5c3196775d3).
+// v16: gear + grip readouts, FINAL badge on the last mission, radio frequency in the ticker.
 // Solmar Bay 3D — the DOM HUD. All the flat UI lives in index.html and
 // this module updates it from the game state, only touching the DOM when
 // a value actually changed. The minimap canvas itself is drawn by the
@@ -7,9 +8,10 @@
 // prompts, toasts, dialogue boxes, the phone, the garage menu and the
 // title / pause / wasted / busted screens.
 
-import { CREW, DISTRICTS, LANDMARKS, STANDING_START, TUNING_ARMOR_PRICE, TUNING_ENGINE_PRICE, TUNING_PAINT_PRICE, TUNING_WHEELS_PRICE, WEAPON_ORDER, WEAPONS, crewUnlocked, districtFor, rankFor, standingLabel, tuneLevel } from './config.js';
-import { objectiveText } from './missions.js';
-import { stationDj, stationName, trackName } from './audio.js';
+import { CREW, DISTRICTS, LANDMARKS, STANDING_START, TUNING_ARMOR_PRICE, TUNING_ENGINE_PRICE, TUNING_PAINT_PRICE, TUNING_WHEELS_PRICE, WEAPON_ORDER, WEAPONS, crewUnlocked, districtFor, gearFor, rankFor, standingLabel, tuneLevel } from './config.js';
+import { gripForSurface, surfaceAt } from './city.js';
+import { MISSIONS, objectiveText } from './missions.js';
+import { stationDj, stationFreq, stationName, trackName } from './audio.js';
 
 // Dialogue portraits (v13): simple SVG faces, one per speaker — a
 // coloured background, hair, eyes and a smile, drawn as a data URI so
@@ -66,7 +68,7 @@ export class Hud {
     this.el = {};
     const ids = [
       'hud', 'health-fill', 'health-num', 'cash', 'stars', 'clock', 'weather',
-      'radio', 'objective', 'speed', 'speed-label', 'toast', 'prompt', 'dialogue',
+      'radio', 'objective', 'speed', 'speed-label', 'gear-line', 'toast', 'prompt', 'dialogue',
       'dialogue-name', 'dialogue-text', 'phone', 'phone-feed', 'phone-contacts',
       'garage', 'garage-list', 'menu', 'menu-title', 'menu-sub', 'menu-hint',
       'mission-banner', 'mission-banner-title', 'mission-banner-sub',
@@ -166,15 +168,19 @@ export class Hud {
     }
     this.set('clock', fmtClock(state.clockMinutes));
     this.set('weather', weatherLabel(state.weather));
-    // Radio ticker.
-    this.set('radio', `♪ ${stationName()} — ${trackName()} · ${stationDj()}`);
+    // Radio ticker (v16): the station's FM frequency rides along —
+    // "♪ Coastal Groove 99.1 — Sunset Over Solmar · DJ Marina".
+    this.set('radio', `♪ ${stationName()} ${stationFreq()} — ${trackName()} · ${stationDj()}`);
     // Objective.
     this.set('objective', objectiveText(state.mission, state.stepIndex, state.stepState));
     // Mission panel (top left): mission name + giver/reward, stage,
     // next step and timer. Free roam shows the Hideout prompt instead.
     const m = state.mission;
     if (m) {
-      this.set('mp-mission', `MISSION ${state.missionIndex + 1} · ${m.title.toUpperCase()}`);
+      // FINAL badge (v16): the last mission is the endgame, so the
+      // panel says so — "MISSION 15 · THE LAST TIDE ★ FINAL".
+      const isFinale = state.missionIndex === MISSIONS.length - 1;
+      this.set('mp-mission', `MISSION ${state.missionIndex + 1} · ${m.title.toUpperCase()}${isFinale ? ' ★ FINAL' : ''}`);
       this.set('mp-stage', `STAGE ${state.stepIndex + 1}/${m.steps.length}`);
       // Stage progress bar (v13): one segment per step — done gold,
       // current orange, upcoming dim — like the top entries' stage bars.
@@ -276,13 +282,21 @@ export class Hud {
       this.set('speed', String(kmh));
       const tune = tuneLevel(p.car);
       this.set('speed-label', tune > 0 ? `${p.car.model.name} · TUNE ${tune} · km/h` : `${p.car.model.name} · km/h`);
+      // Gear + grip (v16): the gearbox from the car's speed and the
+      // grip from the surface under it — "GEAR G3 · GRIP 100%", the
+      // way the top entries show it. Only in a car: on foot or in a
+      // boat there is no gearbox to show.
+      this.set('gear-line', `GEAR G${gearFor(kmh)} · GRIP ${gripForSurface(surfaceAt(p.car.x, p.car.z))}%`);
+      this.show(this.el['gear-line'], true);
     } else if (!p.onFoot && p.boat) {
       const kmh = Math.round(Math.abs(p.boat.vF) * 3.6);
       this.set('speed', String(kmh));
       this.set('speed-label', `${p.boat.model.name} · BOAT · km/h`);
+      this.show(this.el['gear-line'], false);
     } else {
       this.set('speed', '');
       this.set('speed-label', p.onFoot ? 'On foot' : '');
+      this.show(this.el['gear-line'], false);
     }
     // Car condition (bottom right, under the speed): the current
     // vehicle's health as a percentage with a bar, like the top

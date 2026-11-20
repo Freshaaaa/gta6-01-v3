@@ -1,4 +1,6 @@
-// v15 clean re-record (01a1f673).
+// v16 clean re-record (01a1f6c1-0eeb-7191-b67c-e5c3196775d3).
+// v16: no functional change — the same seed still rebuilds the same
+// city, traffic and mission rolls (mulberry32 untouched).
 // Solmar Bay 3D — seeded RNG (mulberry32) and small random helpers.
 // One source of truth for every random draw in the game so a seed always
 // rebuilds the same city, the same traffic and the same mission rolls.

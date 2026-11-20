@@ -1,4 +1,5 @@
-// v15 clean re-record (01a1f673).
+// v16 clean re-record (01a1f6c1-0eeb-7191-b67c-e5c3196775d3).
+// v16: sand and off-road cost acceleration and loosen the slide (surface grip).
 // Solmar Bay 3D — arcade car physics. A bicycle model per car, integrated
 // at 60 Hz: engine force along the heading, lateral grip that bleeds the
 // slide away (loosened by the handbrake or by hard steering at speed, which
@@ -9,6 +10,7 @@
 // Forward = (sin yaw, 0, cos yaw); right = (-cos yaw, 0, sin yaw).
 
 import { WORLD_SIZE } from './config.js';
+import { surfaceAt } from './city.js';
 import { clamp, lerp } from './rng.js';
 
 /**
@@ -25,7 +27,14 @@ export function stepCar(car, dt, slick) {
   const boost = car.crewBoost ? 1.1 : 1;
   const turnBoost = car.crewBoost ? 1.15 : 1;
   const maxSpeed = 42 * m.maxSpeed * boost;
-  const accel = 9.5 * m.accel;
+  // Surface grip (v16): sand and off-road cost acceleration and loosen
+  // the slide, so the beach drive feels different from the asphalt —
+  // the same surfaceAt the HUD grip readout uses. Boats skip it: the
+  // water is their element.
+  const surface = car.isBoat ? 'water' : surfaceAt(car.x, car.z);
+  const surfFactor = car.isBoat ? 1 : surface === 'sand' ? 0.75 : surface === 'offroad' ? 0.9 : 1;
+  const gripBase = car.isBoat ? 11 : surface === 'sand' ? 7 : 11;
+  const accel = 9.5 * m.accel * surfFactor;
   const steerMax = 0.62 * (1 - 0.45 * clamp(Math.abs(car.vF) / maxSpeed, 0, 1)) * m.turn * turnBoost;
 
   // Steering eases toward the input; faster at low speed, lazier at speed.
@@ -52,7 +61,7 @@ export function stepCar(car, dt, slick) {
   // speed loosens it into a drift.
   const speedRatio = clamp(Math.abs(car.vF) / maxSpeed, 0, 1);
   const wantDrift = car.handbrake || (Math.abs(car.steerIn) > 0.85 && speedRatio > 0.55 && Math.abs(car.vF) > 14);
-  const grip = wantDrift ? 2.2 * (slick > 1 ? 0.75 : 1) : 11;
+  const grip = wantDrift ? 2.2 * (slick > 1 ? 0.75 : 1) : gripBase;
   car.vL *= Math.max(0, 1 - grip * dt);
   if (wantDrift) {
     // Slide builds from steering while drifting.

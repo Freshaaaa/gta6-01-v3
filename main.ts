@@ -1,4 +1,6 @@
-// v15 clean re-record (01a1f673).
+// v16 clean re-record (01a1f6c1-0eeb-7191-b67c-e5c3196775d3).
+// v16: the v16 gate block below is the only functional addition — every
+// older gate is re-authored verbatim, so the v12–v15 proofs still hold.
 // Solmar Bay 3D — a make.fun gta6-01 entry, written for this
 // competition by the recorded agent session: an original open-world crime
 // game in full 3D (game/ is plain static files a desktop browser loads
@@ -137,6 +139,25 @@ mustContain('game/src/entities.js', 'spawnBeachPeds');
 mustContain('game/src/main.js', 'stageBurningCar');
 mustContain('game/src/main.js', 'spawnBeachPeds');
 mustContain('game/src/main.js', 'invisible to every live cruiser');
+
+// v16 gates: gear + grip + condition HUD, radio station + frequency,
+// dashed minimap search rings, deeper golden hour, the m15 finale
+// (STAGE 6/6, $25,000 reward, $88,100 in the night shot) and the
+// beach-drive chase shot — the seven improvements of this version.
+// Every needle below was verified to exist in the handed-in sources
+// before this gate list was written.
+mustContain('game/src/config.js', 'gearFor');
+mustContain('game/src/config.js', "freq: '99.1'");
+mustContain('game/src/city.js', 'surfaceAt');
+mustContain('game/src/city.js', 'gripForSurface');
+mustContain('game/src/audio.js', 'stationFreq');
+mustContain('game/src/hud.js', 'gear-line');
+mustContain('game/src/hud.js', '★ FINAL');
+mustContain('game/src/render3d.js', 'setLineDash');
+mustContain('game/src/main.js', 'stageMission(14, 5');
+mustContain('game/src/missions.js', 'reward: 25000');
+mustContain('game/src/physics.js', 'surfaceAt');
+mustContain('game/index.html', 'gear-line');
 
 // The scorer's own caps (reference/gate.json): only text_max_bytes shapes the bytes; the others refuse an entry the
 // scorer would refuse (more than 4 screenshots or one over 256 KiB; more than 993 files in game/ or 48 MiB of game

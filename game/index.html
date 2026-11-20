@@ -1,5 +1,6 @@
 <!doctype html>
-<!-- v15 clean re-record (01a1f673). -->
+<!-- v16 clean re-record (01a1f6c1-0eeb-7191-b67c-e5c3196775d3). -->
+<!-- v16: gear/grip line under the speed; radio placeholder carries the frequency. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -106,6 +107,8 @@
   .wslot .ws-lock { font-size: 9px; font-weight: 800; color: #ff6b6b; }
   #speed { font-size: 52px; font-weight: 900; line-height: 1; }
   #speed-label { font-size: 13px; color: #dfe6ee; }
+  /* gear + grip (v16): under the speed, gold like the radio ticker */
+  #gear-line { font-size: 13px; color: #ffd700; font-weight: 700; margin-top: 2px; }
   #car-cond { font-size: 12px; color: #dfe6ee; margin-top: 4px; }
   #car-cond-bar { display: inline-block; width: 90px; height: 6px; background: rgba(0,0,0,.55); border-radius: 3px; overflow: hidden; vertical-align: middle; margin: 0 5px; }
   #car-cond-fill { display: block; height: 100%; background: #2ecc71; }
@@ -170,7 +173,7 @@
     </div>
   </div>
   <div id="top-left">
-    <div id="radio" class="panel">♪ Coastal Groove</div>
+    <div id="radio" class="panel">♪ Coastal Groove 99.1</div>
     <div id="clock-line" class="panel"><span id="clock">17:30</span> · <span id="weather">☀️ Clear</span></div>
     <div id="mission-panel" class="panel">
       <div class="mp-title" id="mp-mission">FREE ROAM</div>
@@ -201,6 +204,7 @@
     <div id="weapon-slots"></div>
     <div id="speed"></div>
     <div id="speed-label">On foot</div>
+    <div id="gear-line"></div>
     <div id="car-cond">CONDITION <span id="car-cond-bar"><span id="car-cond-fill"></span></span><span id="car-cond-num"></span></div>
     <div id="weapon-line"><span id="weapon">Pistol</span> · <span id="ammo">∞</span></div>
   </div>

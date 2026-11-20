@@ -1,4 +1,5 @@
-// v15 clean re-record (01a1f673).
+// v16 clean re-record (01a1f6c1-0eeb-7191-b67c-e5c3196775d3).
+// v16: chase shot drives the beach sand; night shot is the m15 finale at 5 stars, 9 units.
 // Solmar Bay 3D — boot and the one loop. Input is read every frame,
 // the world advances in fixed 1/60 s steps, and the board paints what
 // is there. The game moves between title, play, paused, wasted and
@@ -945,17 +946,32 @@ function placeCruisersInFrame(state) {
   // Right of the facing direction (x east, z south: facing south, right is west).
   const rx = -Math.cos(p.yaw);
   const rz = Math.sin(p.yaw);
+  // Every police car counts here, wrecked ones included: a cruiser
+  // that wrecked itself ramming the player's invulnerable car during
+  // the sim is staging collateral, not a lost unit — it is revived
+  // on placement below, so the staged frame always shows the full
+  // response the stars call for (8 cruisers + heli at 5 stars).
   const cops = state.cars
-    .filter((c) => c.police && c.state !== 'wreck' && !c.burning)
+    .filter((c) => c.police)
     .sort((a, b) => (Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z)));
   const spots = [
     { ahead: 26, side: 5, vF: 20, role: 'RAMMING' },
     { ahead: 38, side: -4, vF: 16, role: 'PURSUIT' },
     { ahead: 50, side: 6, vF: 14, role: 'PURSUIT' },
     { ahead: 62, side: -5, vF: 12, role: 'FLANKING' },
+    // Two more pursuit units when the full 5-star response is out
+    // (v16): 8 cruisers close in, so the frame holds six of them and
+    // the roadblock pair behind them — nine units on the board.
+    { ahead: 74, side: 4, vF: 10, role: 'FLANKING' },
+    { ahead: 80, side: -6, vF: 8, role: 'FLANKING' },
   ];
-  for (let i = 0; i < Math.min(spots.length, cops.length); i++) {
+  // Only use the extra spots when the full response is out; a 4-star
+  // shot (6 cruisers) keeps the v15 framing — four in pursuit, two on
+  // the roadblock.
+  const use = cops.length >= 8 ? 6 : 4;
+  for (let i = 0; i < Math.min(use, cops.length); i++) {
     const car = cops[i];
+    const wasDown = car.state === 'burning' || car.state === 'wreck';
     const s = spots[i];
     car.x = p.x + fx * s.ahead + rx * s.side;
     car.z = p.z + fz * s.ahead + rz * s.side;
@@ -963,12 +979,17 @@ function placeCruisersInFrame(state) {
     car.vF = s.vF;
     car.state = 'chase';
     car.role = s.role;
+    // A cruiser that caught fire — or wrecked itself ramming the
+    // player during the sim — still counts: put its health back so
+    // the board lists it.
+    if (wasDown) { car.hp = car.maxHp; car.burnTimer = 0; }
   }
   // Roadblock pair: the two farthest cruisers park across the road
   // 85 m ahead, perpendicular to traffic, engines off.
   for (let i = 0; i < 2; i++) {
-    const car = cops[spots.length + i];
+    const car = cops[use + i];
     if (!car) break;
+    const wasDown = car.state === 'burning' || car.state === 'wreck';
     const side = i === 0 ? -4.5 : 4.5;
     car.x = p.x + fx * 85 + rx * side;
     car.z = p.z + fz * 85 + rz * side;
@@ -976,6 +997,7 @@ function placeCruisersInFrame(state) {
     car.vF = 0;
     car.state = 'chase';
     car.role = 'ROADBLOCK';
+    if (wasDown) { car.hp = car.maxHp; car.burnTimer = 0; }
   }
 }
 
@@ -1003,8 +1025,11 @@ function placeHeliInFrame(state) {
 // a ROADBLOCK pair 110 m ahead.
 function placeCruisersOnShore(state) {
   const p = state.player;
+  // Every police car counts here too, wrecked ones included — same
+  // staging collateral as placeCruisersInFrame: revived on placement
+  // below, so the boat shot always shows the full shore response.
   const cops = state.cars
-    .filter((c) => c.police && c.state !== 'wreck' && !c.burning)
+    .filter((c) => c.police)
     .sort((a, b) => (Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z)));
   const spots = [
     { ahead: 30, z: 510, yaw: Math.PI / 2, vF: 18, role: 'PURSUIT' },
@@ -1016,6 +1041,7 @@ function placeCruisersOnShore(state) {
   ];
   for (let i = 0; i < Math.min(spots.length, cops.length); i++) {
     const car = cops[i];
+    const wasDown = car.state === 'burning' || car.state === 'wreck';
     const s = spots[i];
     car.x = p.x + s.ahead;
     car.z = s.z;
@@ -1023,6 +1049,7 @@ function placeCruisersOnShore(state) {
     car.vF = s.vF;
     car.state = 'chase';
     car.role = s.role;
+    if (wasDown) { car.hp = car.maxHp; car.burnTimer = 0; }
   }
 }
 
@@ -1082,15 +1109,18 @@ function stageShot() {
     spawnNearbyTraffic(state, 10);
   } else if (SHOT === 'chase') {
     // Golden hour, late story: Heatwave (m8) escape step, 4 stars, the
-    // whole precinct on the player. $17,900 honestly earned by then:
-    // m1–m7 rewards ($13,200) + side income ($4,700: 6 courier runs,
-    // 12 sun coins, 1 money van, 1 chop). Rep 88 (7 missions + 9 kills),
-    // day 8, armour 55 (bought at the Hideout).
+    // whole precinct on the player — driven down the BEACH this time
+    // (v16): the Aurora on the sand at golden hour, umbrellas and
+    // beachgoers along the shore, the cruisers closing in across the
+    // sand. $17,900 honestly earned by then: m1–m7 rewards ($13,200)
+    // + side income ($4,700: 6 courier runs, 12 sun coins, 1 money
+    // van, 1 chop). Rep 88 (7 missions + 9 kills), day 8, armour 55
+    // (bought at the Hideout).
     state.clockMinutes = 17 * 60 + 30;
     state.weather = WEATHER_CLEAR;
     const car = state.cars.find((c) => c.model.name === 'Aurora') || state.cars[0];
     p.x = 270;
-    p.z = 270;
+    p.z = 518;
     p.onFoot = false;
     p.car = car;
     car.state = 'player';
@@ -1112,18 +1142,22 @@ function stageShot() {
     runChaseSim(state, 900);
     placeCruisersInFrame(state);
     placeHeliInFrame(state);
+    // Beachgoers on the sand (v16): the chase is on the beach, so the
+    // sand around the car is crowded like the boat shot's shore.
+    spawnBeachPeds(state, 10, p.x, p.z);
     spawnNearbyTraffic(state, 10);
   } else if (SHOT === 'beach') {
     // Bright DAYTIME beach drive (v13): Stadium Brawl (m9) deliver
     // step — the ledger goes to the Marina Pier, down the beach road
     // past the sand and the sea, 15:00 sun high. $22,900 honestly
     // earned by then: m1–m8 rewards ($18,200) + side income ($4,700).
-    // Rep 110 (8 missions + 15 kills), day 9, armour 40.
+    // Rep 110 (8 missions + 15 kills), day 9, armour 40. (v16: the
+    // car sits on the sand now, z 518, like the chase shot.)
     state.clockMinutes = 15 * 60;
     state.weather = WEATHER_CLEAR;
     const car = state.cars.find((c) => c.model.name === 'Aurora') || state.cars[0];
     p.x = 300;
-    p.z = 510;
+    p.z = 518;
     p.onFoot = false;
     p.car = car;
     car.state = 'player';
@@ -1182,11 +1216,12 @@ function stageShot() {
     // Bright DAYTIME boat run (v14): The Smuggler's Run (m13) timed
     // checkpoints — the Dinghy on the water off the Marina coast,
     // the beach and the pier behind, the cops holding the shore road.
-    // $38,000 honestly earned by then: m1–m12 rewards ($33,700) +
-    // side income ($4,700) − the m11 engine tune ($400). Rep 150
-    // (12 missions + 15 kills) — RANK S, day 13, armour 60.
-    // (v15: 4 stars now, so 6 cruisers hold the shore — the boat
-    // shot reads as a real chase, not three cars watching.)
+    // $51,500 honestly earned by then (v16: m11–m12 now pay $8,000 +
+    // $12,000): m1–m12 rewards ($47,200) + side income ($4,700) −
+    // the m11 engine tune ($400). Rep 150 (12 missions + 15 kills) —
+    // RANK S, day 13, armour 60. (v15: 4 stars now, so 6 cruisers
+    // hold the shore — the boat shot reads as a real chase, not three
+    // cars watching.)
     state.clockMinutes = 15 * 60;
     state.weather = WEATHER_CLEAR;
     const boat = state.boats.find((b) => b.model.name === 'Dinghy') || state.boats[0];
@@ -1200,7 +1235,7 @@ function stageShot() {
     boat.yaw = Math.PI / 2;
     boat.vF = 15;
     p.yaw = boat.yaw;
-    p.money = 38000;
+    p.money = 51500;
     p.rep = 150;
     state.day = 13;
     p.armour = 60;
@@ -1220,15 +1255,16 @@ function stageShot() {
     spawnBeachPeds(state, 10, p.x, p.z);
     spawnNearbyTraffic(state, 10);
   } else if (SHOT === 'night') {
-    // NIGHT NEON (v14): Tune Wars (m14) timed checkpoints — a tuned
-    // Strada at TUNE 2 down The Strip at 21:45, neon signs and lamps
-    // glowing, headlights on, 4 stars with the helicopter up. $42,600
-    // honestly earned by then: m1–m13 rewards ($38,700) + side income
-    // ($4,700) − tuning ($800: engine Lv1 in m11, engine Lv2 in m14).
-    // Rep 160 (13 missions + 15 kills) — RANK S, day 14, armour 70.
-    // The car is the Strada the mission makes the player steal and
-    // tune — the HUD reads "Strada · TUNE 2", matching the mission
-    // panel ("Bring the tuned Strada to the Hideout").
+    // NIGHT NEON — THE FINALE (v16): The Last Tide (m15), the last
+    // step — the duffel goes to the Hideout as the whole precinct
+    // closes in. A tuned Strada at TUNE 2 down The Strip at 21:45,
+    // neon signs and lamps glowing, headlights on, 5 stars with the
+    // helicopter up and nine units on the board. $88,100 honestly
+    // earned by then: m1–m14 rewards ($84,200) + side income ($4,700)
+    // − tuning ($800: engine Lv1 in m11, engine Lv2 in m14). Rep 170
+    // (14 missions + 15 kills) — RANK S, day 15, armour 70. The
+    // mission panel reads "MISSION 15 · THE LAST TIDE ★ FINAL —
+    // STAGE 6/6", the endgame framing.
     state.clockMinutes = 21 * 60 + 45;
     state.weather = WEATHER_CLEAR;
     const car = state.cars.find((c) => c.model.name === 'Strada')
@@ -1246,20 +1282,19 @@ function stageShot() {
     car.tune = { engine: 2, armor: 0, wheels: 0 };
     car.engine = 2;
     applyTune(car);
-    p.money = 42600;
-    p.rep = 160;
-    state.day = 14;
+    p.money = 88100;
+    p.rep = 170;
+    state.day = 15;
     p.armour = 70;
     p.weaponsOwned = ['pistol', 'smg', 'shotgun', 'rifle', 'ar9', 'breaker'];
     p.ammo = { pistol: Infinity, smg: 150, shotgun: 28, rifle: 120, ar9: 90, breaker: 40 };
     p.weapon = 'smg';
-    stageMission(13, 3, "LIO: Two upgrades minimum, Dante. Engine and wheels. I'll make it fly.");
-    state.stepState.timeLeft = 141;
-    state.wantedHeat = 100;
-    state.wantedStars = 4;
+    stageMission(14, 5, 'VINCE: Twenty-five thousand dollars. Tide is done, the Saltwaters are done, the Bay is yours.');
+    state.wantedHeat = 125;
+    state.wantedStars = 5;
     state.wantedState = 'chasing';
     state.lastSeen = { x: p.x, z: p.z };
-    runChaseSim(state, 900);
+    runChaseSim(state, 1200);
     placeCruisersInFrame(state);
     placeHeliInFrame(state);
     // A burning car ahead on The Strip (v15): the night shot's

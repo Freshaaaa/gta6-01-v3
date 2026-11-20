@@ -1,4 +1,6 @@
-// v15 clean re-record (01a1f673).
+// v16 clean re-record (01a1f6c1-0eeb-7191-b67c-e5c3196775d3).
+// v16: no functional change — save format v1 is untouched, so v15 saves
+// still load (district standing included since v15).
 // Solmar Bay 3D — save / load through localStorage. Saves the player's
 // cash, reputation, collectibles, weapons, health, ammo, wanted heat,
 // position, mission progress, garage, money-van heists and the clock, so
