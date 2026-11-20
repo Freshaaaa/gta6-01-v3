@@ -31,6 +31,11 @@ import {
   tryChop, tryOutfit, tryRespray, tryStartRace, tryStartTaxi, tryTune, updateRace,
   updateTaxi, updateVan, upgradeGarageCar,
 } from './activities.js';
+// v17: business, crew abilities, police escalation, and side jobs.
+import { updateBusiness, tryBuyBusiness, businessPrompt, renderBusinessPanel } from './business.js';
+import { updateCrew, renderAbilityBar, useAbility } from './crew.js';
+import { updatePolice2, updateChatter } from './police2.js';
+import { tryStartChampRace, updateChampRace, tryStartFragile, updateFragile, sidejobsActive } from './sidejobs.js';
 import {
   initAudio, nextStation, prevStation, sfxBusted, sfxCash, sfxPhone, sfxWasted,
   toggleMute, updateEngine, updateHeliRotor, updateSiren,
@@ -411,6 +416,8 @@ function computePrompt() {
   }
   if (!p.onFoot && p.boat) return 'E — Get out (dock)';
   if (!p.onFoot && p.car) {
+    // v17: E at the stadium starts the 3-lap championship ($1,500); T keeps the regular street race.
+    if (dist2(p.x, p.z, stadium.x, stadium.z) < 20 * 20 && !state.race.active && !(state.champRace && state.champRace.active)) return 'E — Championship race ($1,500) · T — Street race ($500)';
     if (dist2(p.x, p.z, stadium.x, stadium.z) < 20 * 20 && !state.race.active) return 'T — Start street race ($500) · E — Get out';
     if (p.car.taxi && !state.taxi.active) return 'T — Start taxi fare · E — Get out';
     if (dist2(p.x, p.z, docks.x, docks.z) < 16 * 16) return 'E — Sell to chop shop';
@@ -419,6 +426,9 @@ function computePrompt() {
     return 'E — Get out';
   }
   // On foot.
+  // v17: a buyable property nearby shows its deed prompt first.
+  const bp = businessPrompt(state);
+  if (bp) return bp;
   const nearBoat = nearestBoat(state, p.x, p.z, 8);
   if (nearBoat) return `E — Board the ${nearBoat.model.name}`;
   for (const car of state.cars) {
@@ -426,6 +436,8 @@ function computePrompt() {
     if (Math.hypot(car.x - p.x, car.z - p.z) - car.model.len / 2 < 4.2) return 'E — Get in the car';
   }
   if (dist2(p.x, p.z, h.x, h.z) < 14 * 14) return 'E — Weapon shop · G — Garage';
+  // v17: Rosa's Diner also offers the fragile delivery (T) beside the outfit (E).
+  if (dist2(p.x, p.z, diner.x, diner.z) < 14 * 14 && !sidejobsActive(state)) return 'E — New outfit $100 · T — Fragile delivery ($1,000)';
   if (dist2(p.x, p.z, diner.x, diner.z) < 14 * 14) return 'E — New outfit $100';
   return '';
 }
@@ -455,6 +467,8 @@ function handleInteractPressed() {
     if (dist2(p.x, p.z, docks.x, docks.z) < 16 * 16) { tryChop(state); return; }
     if (dist2(p.x, p.z, h.x, h.z) < 14 * 14 && state.wantedStars > 0) { tryRespray(state); return; }
     if (dist2(p.x, p.z, tuner.x, tuner.z) < 14 * 14) { state.tuningOpen = true; return; }
+    // v17: E at the stadium in a car starts the 3-lap championship race.
+    if (dist2(p.x, p.z, stadium.x, stadium.z) < 20 * 20) { if (tryStartChampRace(state)) return; }
     exitCar(state);
     return;
   }
@@ -465,6 +479,8 @@ function handleInteractPressed() {
   if (state.van.active && state.van.car && Math.hypot(p.x - state.van.car.x, p.z - state.van.car.z) < 5) return;
   if (dist2(p.x, p.z, h.x, h.z) < 14 * 14) { shopCycle(state); return; }
   if (dist2(p.x, p.z, diner.x, diner.z) < 14 * 14) { tryOutfit(state); return; }
+  // v17: E on foot near a buyable property buys the deed (or says the price).
+  if (tryBuyBusiness(state)) return;
   tryEnterCar(state);
 }
 
@@ -474,6 +490,8 @@ function handleInteractPressed() {
 function handleJobKey(state) {
   const p = state.player;
   const { stadium } = LANDMARKS;
+  // v17: T on foot at Rosa's Diner starts the fragile delivery.
+  if (p.onFoot && dist2(p.x, p.z, LANDMARKS.diner.x, LANDMARKS.diner.z) < 14 * 14) { tryStartFragile(state); return; }
   if (p.onFoot || !p.car) return;
   // At the stadium the race wins over a cab fare (a race is a one-off
   // event at one place; a fare can start anywhere else).
@@ -579,6 +597,13 @@ function step(dt) {
   updateRace(state, dt);
   updateVan(state, dt);
   safehouseTick(state, dt);
+  // v17: business income, crew abilities, police escalation, side jobs.
+  updateBusiness(state, dt);
+  updateCrew(state, dt);
+  updatePolice2(state, dt);
+  updateChatter(state, dt);
+  updateChampRace(state, dt);
+  updateFragile(state, dt);
   checkStep(dt);
 
   // Courier auto-start at the Hideout after the story.
@@ -755,6 +780,9 @@ function frame(now) {
   hud.renderPhone(state);
   hud.renderGarage(state);
   hud.renderTuning(state);
+  // v17: business panel and crew ability bar render beside the HUD.
+  renderBusinessPanel(state);
+  renderAbilityBar(state);
   // In manual-step mode the debug step() clears the edges itself, so a
   // press() is not eaten by the render loop before the test steps.
   if (state.autoTick) clearEdges(input);
@@ -797,6 +825,8 @@ function applySave(data) {
   state.feed = data.feed || state.feed;
   state.shopCycle = data.shopCycle || 0;
   state.standing = data.standing || {};
+  // v17: property deeds persist across saves.
+  state.business = data.business || null;
   if (data.coinsTaken) {
     state.city.coins.forEach((c, i) => { c.taken = !!data.coinsTaken[i]; });
   }
@@ -1255,16 +1285,17 @@ function stageShot() {
     spawnBeachPeds(state, 10, p.x, p.z);
     spawnNearbyTraffic(state, 10);
   } else if (SHOT === 'night') {
-    // NIGHT NEON — THE FINALE (v16): The Last Tide (m15), the last
+    // NIGHT NEON — THE FINALE (v17): Ironwood Falls (m20), the last
     // step — the duffel goes to the Hideout as the whole precinct
-    // closes in. A tuned Strada at TUNE 2 down The Strip at 21:45,
+    // closes in. A tuned Strada at TUNE 4 down The Strip at 21:45,
     // neon signs and lamps glowing, headlights on, 5 stars with the
-    // helicopter up and nine units on the board. $88,100 honestly
-    // earned by then: m1–m14 rewards ($84,200) + side income ($4,700)
-    // − tuning ($800: engine Lv1 in m11, engine Lv2 in m14). Rep 170
-    // (14 missions + 15 kills) — RANK S, day 15, armour 70. The
-    // mission panel reads "MISSION 15 · THE LAST TIDE ★ FINAL —
-    // STAGE 6/6", the endgame framing.
+    // helicopter up and nine units on the board. $176,500 honestly
+    // earned by then: m1–m19 rewards ($174,200) + side income ($4,700)
+    // − tuning ($2,400: engine Lv1 in m11, engine Lv1+Lv2 in m14,
+    // engine Lv1+Lv2 and wheels Lv1+Lv2 in m19). Rep 258 (19 missions
+    // + 34 kills) — RANK S, day 20, armour 70. The mission panel reads
+    // "MISSION 20 · IRONWOOD FALLS ★ FINAL — STAGE 5/5", the endgame
+    // framing.
     state.clockMinutes = 21 * 60 + 45;
     state.weather = WEATHER_CLEAR;
     const car = state.cars.find((c) => c.model.name === 'Strada')
@@ -1277,19 +1308,20 @@ function stageShot() {
     car.vF = 24;
     car.yaw = Math.PI / 2;
     p.yaw = car.yaw;
-    // The tune is real: engine level 2, applied through applyTune,
-    // so the car genuinely drives faster and the HUD reads TUNE 2.
-    car.tune = { engine: 2, armor: 0, wheels: 0 };
+    // The tune is real: engine level 2 + wheels level 2, applied
+    // through applyTune, so the car genuinely drives faster and the
+    // HUD reads TUNE 4.
+    car.tune = { engine: 2, armor: 0, wheels: 2 };
     car.engine = 2;
     applyTune(car);
-    p.money = 88100;
-    p.rep = 170;
-    state.day = 15;
+    p.money = 176500;
+    p.rep = 258;
+    state.day = 20;
     p.armour = 70;
     p.weaponsOwned = ['pistol', 'smg', 'shotgun', 'rifle', 'ar9', 'breaker'];
     p.ammo = { pistol: Infinity, smg: 150, shotgun: 28, rifle: 120, ar9: 90, breaker: 40 };
     p.weapon = 'smg';
-    stageMission(14, 5, 'VINCE: Twenty-five thousand dollars. Tide is done, the Saltwaters are done, the Bay is yours.');
+    stageMission(19, 4, 'VINCE: Thirty thousand dollars. Ironwood is done, the Bay is yours.');
     state.wantedHeat = 125;
     state.wantedStars = 5;
     state.wantedState = 'chasing';
@@ -1424,6 +1456,18 @@ window.__solmar = {
   setClock(minutes) { state.clockMinutes = minutes; },
   setWeather(w) { state.weather = w; },
   startMission(i) { startMission(i); },
+  // v17 debug hooks (playtest): business, side jobs, crew abilities.
+  buyBusiness() { return tryBuyBusiness(state); },
+  startChampRace() { return tryStartChampRace(state); },
+  startFragile() { return tryStartFragile(state); },
+  useAbility(id) { return useAbility(state, id); },
+  setMoney(n) { state.player.money = n; },
+  setProgress(i, done) { state.missionIndex = i; state.storyDone = !!done; },
+  get business() { return state.business; },
+  get champRace() { return state.champRace; },
+  get fragile() { return state.fragile; },
+  get spikes() { return state.spikes; },
+  get manhuntCars() { return state.manhuntCars; },
   addWanted(n) {
     state.wantedHeat = Math.max(0, (state.wantedHeat || 0) + n);
     state.wantedStars = Math.min(6, Math.floor(state.wantedHeat / 25));

@@ -35,6 +35,7 @@
 
 import { LANDMARKS } from './config.js';
 import { pick } from './rng.js';
+import { MISSIONS2 } from './missions2.js';
 
 export const MISSIONS = [
   {
@@ -389,6 +390,10 @@ export const MISSIONS = [
     ],
   },
 ];
+
+// v17: the Ironwood arc (m16–m20) joins the story — MISSIONS2 is a
+// separate module so the new arc stays a fresh-authored addition.
+MISSIONS.push(...MISSIONS2);
 
 // Repeatable side job after the story (or between missions, from the Hideout).
 export function makeCourierJob(rng, index) {

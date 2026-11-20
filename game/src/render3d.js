@@ -14,6 +14,7 @@ import * as THREE from 'three';
 import { DISTRICTS, WATER_Z_MAX, WATER_Z_MIN, WORLD_SIZE, ROAD_WIDTH, ROAD_GAP, ROAD_FIRST, ROAD_COUNT, LANDMARKS, crewUnlocked } from './config.js';
 import { clamp, lerp } from './rng.js';
 import { gpsRoute } from './city.js';
+import { abilityRevealActive } from './crew.js';
 
 const roadLines = [];
 for (let i = 0; i < ROAD_COUNT; i++) roadLines.push(ROAD_FIRST + i * ROAD_GAP);
@@ -1661,6 +1662,15 @@ export class Board {
         g.fill();
       }
     }
+    // Spike strips (v17): red dots so the driver can see the hazard.
+    if (state.spikes) {
+      g.fillStyle = '#ff2222';
+      for (const sp of state.spikes) {
+        g.beginPath();
+        g.arc((sp.x - px) * scale, (sp.z - pz) * scale, 4, 0, Math.PI * 2);
+        g.fill();
+      }
+    }
     // Objective marker.
     if (state.marker && state.marker.active) {
       g.fillStyle = '#ffd700';
@@ -1682,11 +1692,13 @@ export class Board {
     // ability (v13) is real here: without her on the crew only the
     // cruisers within 60 m show — with her, every unit in range does.
     const kikiOn = crewUnlocked(state.missionIndex, state.storyDone).kiki;
+    // v17: Kiki's lookout ability reveals every cruiser on the minimap too.
+    const reveal = kikiOn || abilityRevealActive(state);
     const flash = Math.floor(performance.now() / 300) % 2 === 0;
     for (const car of state.cars) {
       if (!car.police) continue;
       const d = Math.hypot(car.x - px, car.z - pz);
-      if (!kikiOn && d > 60) continue;
+      if (!reveal && d > 60) continue;
       g.fillStyle = state.wantedStars > 0 && flash ? '#ff4444' : '#4488ff';
       g.beginPath();
       g.arc((car.x - px) * scale, (car.z - pz) * scale, 3.5, 0, Math.PI * 2);

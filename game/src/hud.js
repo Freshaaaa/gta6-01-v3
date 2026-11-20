@@ -12,6 +12,7 @@ import { CREW, DISTRICTS, LANDMARKS, STANDING_START, TUNING_ARMOR_PRICE, TUNING_
 import { gripForSurface, surfaceAt } from './city.js';
 import { MISSIONS, objectiveText } from './missions.js';
 import { stationDj, stationFreq, stationName, trackName } from './audio.js';
+import { NEW_CREW, crew2Unlocked } from './crew.js';
 
 // Dialogue portraits (v13): simple SVG faces, one per speaker — a
 // coloured background, hair, eyes and a smile, drawn as a data URI so
@@ -344,8 +345,10 @@ export class Hud {
     // a member who has not joined yet shows greyed with the job that
     // unlocks them. The unlock state comes from missions completed.
     const crew = crewUnlocked(state.missionIndex, state.storyDone);
-    const crewHtml = CREW.map((c) => {
-      const on = crew[c.id];
+    // v17: the three new recruits join the crew cards once unlocked.
+    const crew2 = crew2Unlocked(state.missionIndex, state.storyDone);
+    const crewHtml = [...CREW, ...NEW_CREW].map((c) => {
+      const on = crew[c.id] ?? crew2[c.id];
       const face = `<div class="crew-face" style="background:${c.color}">${c.name[0]}</div>`;
       const body = on
         ? `<div><div class="crew-name">${c.name} <span class="crew-role">· ${c.role}</span></div><div class="crew-ability">${c.ability}</div></div>`

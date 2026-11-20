@@ -90,7 +90,7 @@ mustContain('game/src/config.js', 'BOAT_MODELS');
 mustContain('game/src/config.js', 'TUNE_MAX');
 mustContain('game/src/config.js', 'tuneLevel');
 mustContain('game/src/config.js', 'applyTune');
-mustContain('game/src/config.js', 'MISSIONS_COUNT = 15');
+mustContain('game/src/config.js', 'MISSIONS_COUNT = 20');
 mustContain('game/src/config.js', "Lio's Tuning Garage");
 mustContain('game/src/entities.js', 'spawnBoat');
 mustContain('game/src/entities.js', 'tryEnterBoat');
@@ -154,10 +154,29 @@ mustContain('game/src/audio.js', 'stationFreq');
 mustContain('game/src/hud.js', 'gear-line');
 mustContain('game/src/hud.js', '★ FINAL');
 mustContain('game/src/render3d.js', 'setLineDash');
-mustContain('game/src/main.js', 'stageMission(14, 5');
+mustContain('game/src/main.js', 'stageMission(19, 4');
 mustContain('game/src/missions.js', 'reward: 25000');
 mustContain('game/src/physics.js', 'surfaceAt');
 mustContain('game/index.html', 'gear-line');
+
+// v17 gates: the Ironwood arc (m16–m20), the business empire, crew
+// abilities, police manhunt + spike strips + radio chatter, and the
+// championship race + fragile delivery side jobs.
+mustContain('game/src/config.js', 'MISSIONS_COUNT = 20');
+mustContain('game/src/missions.js', 'MISSIONS2');
+mustContain('game/src/missions2.js', 'Ironwood Falls');
+mustContain('game/src/business.js', 'PROPERTIES');
+mustContain('game/src/business.js', 'tryBuyBusiness');
+mustContain('game/src/crew.js', 'ABILITIES');
+mustContain('game/src/crew.js', 'useAbility');
+mustContain('game/src/police2.js', 'MANHUNT');
+mustContain('game/src/police2.js', 'updateChatter');
+mustContain('game/src/sidejobs.js', 'CHAMP_RACE_PRIZE');
+mustContain('game/src/sidejobs.js', 'tryStartFragile');
+mustContain('game/index.html', 'business-panel');
+mustContain('game/index.html', 'ability-bar');
+mustContain('game/src/main.js', 'updateBusiness');
+mustContain('game/src/main.js', 'updatePolice2');
 
 // The scorer's own caps (reference/gate.json): only text_max_bytes shapes the bytes; the others refuse an entry the
 // scorer would refuse (more than 4 screenshots or one over 256 KiB; more than 993 files in game/ or 48 MiB of game

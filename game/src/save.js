@@ -37,6 +37,8 @@ export function saveGame(state) {
       vansRobbed: state.vansRobbed,
       // District standing (v15, re-recorded): saved with the rest of the profile.
       standing: state.standing || {},
+      // v17: property deeds and rent earned persist across saves.
+      business: state.business || null,
       feed: state.feed.slice(0, 6),
       shopCycle: state.shopCycle,
     };

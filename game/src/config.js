@@ -233,7 +233,7 @@ export function crewUnlocked(missionIndex, storyDone) {
 }
 // Mission count is defined in missions.js; the crew helper needs it
 // without a circular import, so it lives here as a plain number.
-export const MISSIONS_COUNT = 15;
+export const MISSIONS_COUNT = 20;
 
 // Body armour (v13): absorbs damage before health does. Bought at the
 // Hideout shop; the HUD shows the armour bar next to health.
