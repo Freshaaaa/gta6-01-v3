@@ -23,10 +23,11 @@ const SEED = parseInt(params.get('seed') || '7', 10);
 
 const canvas = document.getElementById('game');
 const engine = new Engine(canvas);
-// Test hook: ?lowfx=1 disables shadows for faster software-rendered playtests.
+// Test hook: ?lowfx=1 disables shadows and renders at 60% resolution so
+// the software renderer runs fast enough for sim-time waits.
 if (params.get('lowfx')) {
   engine.renderer.shadowMap.enabled = false;
-  engine.renderer.setPixelRatio(1);
+  engine.renderer.setPixelRatio(0.6);
 }
 const city = new City(engine.scene, SEED);
 const player = new Player(engine.scene);
