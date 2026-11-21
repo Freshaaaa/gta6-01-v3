@@ -65,12 +65,15 @@ export class Weapons {
     if (this.ammo[this.current] <= 0) { this.ctx.audio.playClick(); this.reload(); return false; }
     this.ammo[this.current]--;
     this.shotCooldown = this.current === 2 ? 0.09 : 0.28;
-    // Aim from Dante's eye along his facing (horizontal), NOT the chase
-    // camera: the camera looks down at him, so a screen-centre ray hits the
-    // ground a few metres ahead and can never reach a ped 8m away.
+    // Aim from Dante's eye along his CAMERA yaw (camYaw), NOT his body yaw:
+    // body yaw only updates while walking, so after exiting a car it is
+    // stale (0) while camYaw tracks the car heading — aiming along body yaw
+    // shoots 90° away from where the camera (and the ped ahead) points.
+    // The chase camera looks down, so a screen-centre ray would hit the
+    // ground a few metres ahead and never reach a ped 8m away.
     const p = this.ctx.getPlayer();
     const origin = new THREE.Vector3(p.x, 1.4, p.z);
-    const dir = new THREE.Vector3(Math.sin(p.yaw), 0, Math.cos(p.yaw));
+    const dir = new THREE.Vector3(Math.sin(p.camYaw), 0, Math.cos(p.camYaw));
     const m = this.muzzlePos();
     const muzzle = new THREE.Vector3(m.x, m.y, m.z);
     // Find the nearest hittable target near Dante's facing.

@@ -56,6 +56,7 @@ function getPlayer() {
     z: drivenCar ? drivenCar.z : player.z,
     y: player.y,
     yaw: player.yaw,
+    camYaw: player.camYaw,
     inCar: !!drivenCar,
     car: drivenCar,
   };
