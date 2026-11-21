@@ -65,14 +65,15 @@ export class Weapons {
     if (this.ammo[this.current] <= 0) { this.ctx.audio.playClick(); this.reload(); return false; }
     this.ammo[this.current]--;
     this.shotCooldown = this.current === 2 ? 0.09 : 0.28;
-    const cam = this.ctx.camera;
-    const origin = new THREE.Vector3();
-    cam.getWorldPosition(origin);
-    const dir = new THREE.Vector3();
-    cam.getWorldDirection(dir);
+    // Aim from Dante's eye along his facing (horizontal), NOT the chase
+    // camera: the camera looks down at him, so a screen-centre ray hits the
+    // ground a few metres ahead and can never reach a ped 8m away.
+    const p = this.ctx.getPlayer();
+    const origin = new THREE.Vector3(p.x, 1.4, p.z);
+    const dir = new THREE.Vector3(Math.sin(p.yaw), 0, Math.cos(p.yaw));
     const m = this.muzzlePos();
     const muzzle = new THREE.Vector3(m.x, m.y, m.z);
-    // Find the nearest hittable target near the camera's centre ray.
+    // Find the nearest hittable target near Dante's facing.
     let best = null, bd = 70;
     const consider = (x, y, z, obj) => {
       const v = new THREE.Vector3(x - origin.x, y - origin.y, z - origin.z);
