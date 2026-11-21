@@ -6,7 +6,7 @@ import { BEACH_Z, SEA_Z, PITCH, CITY_R } from './city.js';
 export class HUD {
   constructor() {
     this.el = {};
-    for (const id of ['money', 'stars', 'health-fill', 'weapon', 'speed', 'gear', 'car-name', 'clock', 'objective', 'prompt', 'location', 'menu', 'pause-menu', 'minimap']) {
+    for (const id of ['money', 'stars', 'health-fill', 'weapon', 'speed', 'gear', 'car-name', 'clock', 'objective', 'prompt', 'location', 'menu', 'pause-menu', 'minimap', 'busted', 'wasted']) {
       this.el[id] = document.getElementById(id);
     }
     this.map = this.el.minimap.getContext('2d');
@@ -42,9 +42,13 @@ export class HUD {
   }
   showMenu(show) { this.el.menu.style.display = show ? 'flex' : 'none'; }
   showPause(show) { this.el['pause-menu'].style.display = show ? 'flex' : 'none'; }
+  showBusted(show) { if (this.el.busted) this.el.busted.style.display = show ? 'flex' : 'none'; }
+  showWasted(show) { if (this.el.wasted) this.el.wasted.style.display = show ? 'flex' : 'none'; }
 
-  // Top-down minimap: roads, beach, sea, parked cars, player arrow.
-  drawMinimap(player, cars, drivenCar) {
+  // Top-down minimap: roads, beach, sea, parked cars, player arrow, plus
+  // extras: mission marker (yellow diamond), target car (purple), taxi
+  // marker (green), sun coins (gold), police (red/blue dots), traffic (dots).
+  drawMinimap(player, cars, drivenCar, extras = {}) {
     const g = this.map, S = 200, W = 620; // world -310..310 maps to 0..200
     const toMap = (x, z) => [((x + 310) / W) * S, ((z + 310) / W) * S];
     g.clearRect(0, 0, S, S);
@@ -70,6 +74,45 @@ export class HUD {
     for (const c of cars) {
       const [cx, cy] = toMap(c.x, c.z);
       g.fillRect(cx - 1.5, cy - 1.5, 3, 3);
+    }
+    // Traffic cars as dimmer dots.
+    if (extras.traffic) {
+      g.fillStyle = '#8a94a8';
+      for (const c of extras.traffic) {
+        const [cx, cy] = toMap(c.x, c.z);
+        g.fillRect(cx - 1.5, cy - 1.5, 3, 3);
+      }
+    }
+    // Sun coins as gold dots.
+    if (extras.coins) {
+      g.fillStyle = '#ffd23e';
+      for (const c of extras.coins) {
+        const [cx, cy] = toMap(c.x, c.z);
+        g.beginPath(); g.arc(cx, cy, 2.5, 0, Math.PI * 2); g.fill();
+      }
+    }
+    // Mission / taxi marker as a yellow-green diamond.
+    const drawDiamond = (mx, mz, color, size = 6) => {
+      const [dx, dy] = toMap(mx, mz);
+      g.fillStyle = color;
+      g.beginPath();
+      g.moveTo(dx, dy - size); g.lineTo(dx + size, dy); g.lineTo(dx, dy + size); g.lineTo(dx - size, dy);
+      g.closePath(); g.fill();
+    };
+    if (extras.marker) drawDiamond(extras.marker.x, extras.marker.z, '#ffd23e', 6);
+    if (extras.taxi) drawDiamond(extras.taxi.x, extras.taxi.z, '#37e07a', 5);
+    if (extras.target) drawDiamond(extras.target.x, extras.target.z, '#9a7aff', 5);
+    // Police as red dots, foot cops as smaller red dots.
+    if (extras.police) {
+      g.fillStyle = '#ff4040';
+      for (const pc of extras.police.cars || []) {
+        const [cx, cy] = toMap(pc.x, pc.z);
+        g.beginPath(); g.arc(cx, cy, 3, 0, Math.PI * 2); g.fill();
+      }
+      for (const cp of extras.police.cops || []) {
+        const [cx, cy] = toMap(cp.x, cp.z);
+        g.fillRect(cx - 1.5, cy - 1.5, 3, 3);
+      }
     }
     // Player arrow (or driven car arrow).
     const px = drivenCar ? drivenCar.x : player.x;

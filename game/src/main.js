@@ -1,5 +1,6 @@
-// Solmar Bay 3D — main: boots engine, city, player, vehicles, HUD; game
-// loop, state machine (menu → playing → paused), input, chase camera,
+// Solmar Bay 3D — main: boots engine, city, player, vehicles, HUD, and the
+// gameplay systems (traffic, pedestrians, police, missions, weapons, audio);
+// game loop, state machine (menu → playing → paused), input, chase camera,
 // save, and the ?shot= staging hook for screenshots. Written fresh for the
 // gta6-01 3D rebuild (branch v12-3d).
 import * as THREE from 'three';
@@ -10,6 +11,11 @@ import { VehicleManager } from './vehicles.js';
 import { HUD } from './hud.js';
 import { loadSave, writeSave } from './save.js';
 import { AudioStub } from './audio.js';
+import { Traffic } from './traffic.js';
+import { Pedestrians } from './pedestrians.js';
+import { Police } from './police.js';
+import { Missions } from './missions.js';
+import { Weapons } from './weapons.js';
 
 const params = new URLSearchParams(location.search);
 const SHOT = params.get('shot') || '';
@@ -25,6 +31,7 @@ const audio = new AudioStub();
 
 let state = 'menu'; // menu | playing | paused
 let money = 250;
+let health = 100;
 let time = 17.5;
 let simSeconds = 0; // simulation seconds advanced (frame-rate independent clock)
 let drivenCar = null;
@@ -33,6 +40,51 @@ let saveTimer = 0;
 let frames = 0;
 const keys = {};
 let drag = null;
+let penalty = null; // {type: 'busted'|'wasted', t}
+let lastShot = null;
+let lastShotT = -100;
+
+function getPlayer() {
+  return {
+    x: drivenCar ? drivenCar.x : player.x,
+    z: drivenCar ? drivenCar.z : player.z,
+    y: player.y,
+    yaw: player.yaw,
+    inCar: !!drivenCar,
+    car: drivenCar,
+  };
+}
+
+// --- systems (constructed after the core, wired through closures) ---
+const police = new Police(engine.scene, city, {
+  getPlayer,
+  damagePlayer: (n) => damagePlayer(n, 'ram'),
+  onBusted: () => applyPenalty('busted'),
+  audio,
+});
+const traffic = new Traffic(engine.scene, city, SEED + 31);
+const peds = new Pedestrians(engine.scene, city, SEED + 47);
+const missions = new Missions(engine.scene, city, {
+  getPlayer,
+  hud,
+  police,
+  audio,
+  addMoney: (n) => { money += n; hud.setMoney(money); },
+  saveNow: () => saveNow(),
+  unlocked: 0,
+  coinsCollected: [],
+});
+const weapons = new Weapons(engine.scene, {
+  camera: engine.camera,
+  getPlayer,
+  peds,
+  police,
+  traffic,
+  audio,
+  addWanted: (n) => police.addWanted(n),
+  onWeaponChange: (t) => hud.setWeapon(t),
+  onShot: (pos) => { lastShot = pos; lastShotT = simSeconds; },
+});
 
 // --- save ---
 const saved = loadSave();
@@ -41,15 +93,25 @@ if (saved) {
   player.x = saved.x ?? player.x;
   player.z = saved.z ?? player.z;
   time = saved.time ?? time;
+  health = saved.health ?? 100;
   player.group.position.set(player.x, 0, player.z);
+  if (saved.weapons) {
+    weapons.current = saved.weapons.current ?? 0;
+    weapons.ammo = saved.weapons.ammo ?? weapons.ammo;
+    weapons.reserve = saved.weapons.reserve ?? weapons.reserve;
+  }
+  if (typeof saved.mission === 'number') missions.unlocked = saved.mission;
+  if (Array.isArray(saved.coins)) missions.coinsCollected = new Set(saved.coins);
 }
 engine.setTime(time);
 hud.setMoney(money);
-hud.setHealth(100);
+hud.setHealth(health);
 hud.setWanted(0);
-hud.setWeapon('Fists');
+hud.setWeapon(weapons.hudText());
 hud.setObjective('Explore Solmar Bay — find a car and press E');
 hud.setLocation('Downtown');
+// Auto-start the story: the next uncompleted mission.
+missions.startMission(Math.min(missions.unlocked, 7));
 
 function saveNow() {
   return writeSave({
@@ -57,22 +119,79 @@ function saveNow() {
     x: drivenCar ? drivenCar.x : player.x,
     z: drivenCar ? drivenCar.z : player.z,
     time,
+    health,
+    mission: missions.unlocked,
+    weapons: { current: weapons.current, ammo: weapons.ammo, reserve: weapons.reserve },
+    coins: [...missions.coinsCollected],
   });
+}
+
+// --- health / busted / wasted ---
+function damagePlayer(n, source) {
+  if (penalty) return;
+  health = Math.max(0, health - n);
+  hud.setHealth(health);
+  if (health <= 0) applyPenalty('wasted');
+}
+
+function applyPenalty(type) {
+  if (penalty) return;
+  penalty = { type, t: 2.5 };
+  if (type === 'busted') {
+    money = Math.max(0, money - 200);
+    hud.showBusted(true);
+  } else {
+    money = Math.max(0, money - 100);
+    hud.showWasted(true);
+  }
+  hud.setMoney(money);
+  audio.playFail();
+}
+
+function respawnAfterPenalty() {
+  if (drivenCar) {
+    drivenCar.driven = false;
+    drivenCar.setHeadlight(false);
+    drivenCar = null;
+  }
+  player.inCar = null;
+  player.x = 26; player.z = 26; player.y = 0; player.vy = 0; player.grounded = true;
+  player.group.visible = true;
+  player.group.position.set(player.x, 0, player.z);
+  health = 100;
+  hud.setHealth(health);
+  hud.showBusted(false);
+  hud.showWasted(false);
+  police.clearAll();
+  hud.setWanted(0);
+  hud.setObjective('Back on the streets — the story continues');
+  saveNow();
+  penalty = null;
 }
 
 // --- input ---
 window.addEventListener('keydown', (e) => {
   if (e.repeat) return;
   keys[e.code] = true;
-  if (e.code === 'Escape' && state === 'playing') { setState('paused'); return; }
+  if (e.code === 'Escape' && state === 'playing') { setState('paused'); saveNow(); return; }
   if (e.code === 'Escape' && state === 'paused') { setState('playing'); return; }
-  if (state !== 'playing') return;
+  if (state !== 'playing' || penalty) return;
   if (e.code === 'KeyE') toggleCar();
-  if (e.code === 'KeyF') player.punch();
+  if (e.code === 'KeyF') { player.punch(); weapons.punch(); }
   if (e.code === 'KeyM') audio.toggleMute();
+  if (e.code === 'KeyQ') audio.nextStation();
+  if (e.code === 'KeyR') weapons.reload();
+  if (e.code === 'Digit1') weapons.switchTo(0);
+  if (e.code === 'Digit2') weapons.switchTo(1);
+  if (e.code === 'Digit3') weapons.switchTo(2);
 });
 window.addEventListener('keyup', (e) => { keys[e.code] = false; });
-canvas.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, y: e.clientY }; canvas.setPointerCapture(e.pointerId); });
+let downPos = null;
+canvas.addEventListener('pointerdown', (e) => {
+  drag = { x: e.clientX, y: e.clientY };
+  downPos = { x: e.clientX, y: e.clientY };
+  canvas.setPointerCapture(e.pointerId);
+});
 canvas.addEventListener('pointermove', (e) => {
   if (!drag) return;
   const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
@@ -80,7 +199,15 @@ canvas.addEventListener('pointermove', (e) => {
   player.camYaw -= dx * 0.005;
   player.camPitch = Math.max(0.05, Math.min(1.1, player.camPitch + dy * 0.005));
 });
-canvas.addEventListener('pointerup', () => { drag = null; });
+canvas.addEventListener('pointerup', (e) => {
+  drag = null;
+  // A click (not a drag) fires the current weapon.
+  if (downPos && state === 'playing' && !penalty && weapons.current !== 0) {
+    const moved = Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y);
+    if (moved < 6) weapons.shoot();
+  }
+  downPos = null;
+});
 
 function setState(next) {
   state = next;
@@ -95,6 +222,10 @@ document.getElementById('restart-btn').addEventListener('click', () => {
   if (drivenCar) { drivenCar.driven = false; drivenCar = null; }
   player.inCar = null;
   player.group.visible = true;
+  health = 100;
+  hud.setHealth(health);
+  police.clearAll();
+  hud.setWanted(0);
   setState('playing');
 });
 
@@ -103,15 +234,20 @@ function toggleCar() {
     player.exitCar();
     drivenCar.setHeadlight(false);
     drivenCar = null;
+    missions.onExitCar();
     saveNow();
     hud.setObjective('Explore Solmar Bay — find a car and press E');
     return;
   }
   const car = vehicles.nearestCar(player.x, player.z, 4);
   if (car) {
+    // Stealing in view of a pedestrian (or the police) raises the heat.
+    const witness = peds.nearestPed(player.x, player.z, 30) || police.nearestPoliceDist(player.x, player.z) < 40;
+    if (witness) police.addWanted(1);
     player.enterCar(car);
     drivenCar = car;
     car.setHeadlight(engine.isNight);
+    missions.onEnterCar(car);
     hud.setObjective('Drive — WASD to steer, Space to drift');
   }
 }
@@ -166,6 +302,11 @@ function districtAt(x, z) {
 // --- main loop ---
 function update(dt) {
   if (state !== 'playing') return;
+  if (penalty) {
+    penalty.t -= dt;
+    if (penalty.t <= 0) respawnAfterPenalty();
+    return;
+  }
   simSeconds += dt;
   time += dt / 240; // 1 game hour per 4 real minutes
   engine.setTime(time);
@@ -185,8 +326,28 @@ function update(dt) {
       handbrake: keys.Space,
     };
     vehicles.update(dt, drivenCar, drive);
+    // Ploughing through pedestrians is a crime.
+    const hits = peds.checkCarHit(drivenCar);
+    if (hits.length > 0) police.addWanted(1);
   } else {
     player.update(dt, input, city);
+  }
+  // Systems.
+  traffic.update(dt, { px: getPlayer().x, pz: getPlayer().z, drivenCar });
+  peds.update(dt, {
+    px: getPlayer().x, pz: getPlayer().z,
+    carX: drivenCar ? drivenCar.x : null,
+    carZ: drivenCar ? drivenCar.z : null,
+    carSpeed: drivenCar ? Math.abs(drivenCar.speed) : 0,
+    threat: (lastShot && simSeconds - lastShotT < 1.5) ? lastShot : null,
+  });
+  police.update(dt);
+  missions.update(dt);
+  weapons.update(dt);
+  // Health regen when the heat is off.
+  if (police.wanted === 0 && health < 100) {
+    health = Math.min(100, health + 4 * dt);
+    hud.setHealth(health);
   }
   // Interaction prompt.
   if (!drivenCar) {
@@ -200,8 +361,13 @@ function update(dt) {
   const gear = !drivenCar ? '—' : kmh < 40 ? 'G1' : kmh < 80 ? 'G2' : kmh < 120 ? 'G3' : kmh < 160 ? 'G4' : 'G5';
   hud.setSpeed(kmh, gear, drivenCar ? drivenCar.model.name : 'On foot');
   hud.setClock(time);
+  hud.setWanted(police.wanted);
   hud.setLocation(districtAt(drivenCar ? drivenCar.x : player.x, drivenCar ? drivenCar.z : player.z));
-  hud.drawMinimap(player, vehicles.cars, drivenCar);
+  hud.drawMinimap(player, vehicles.cars, drivenCar, {
+    ...missions.getMinimapExtras(),
+    police: police.positions,
+    traffic: traffic.cars.filter((t) => !t.disabled).map((t) => ({ x: t.car.x, z: t.car.z })),
+  });
   audio.setEngine(kmh, !!drivenCar);
   engine.followShadows(drivenCar ? drivenCar.x : player.x, drivenCar ? drivenCar.z : player.z);
   // Autosave every 10 s.
@@ -223,7 +389,7 @@ engine.start(update, render);
 function stageShot() {
   if (!SHOT) return;
   setState('playing');
-  if (SHOT === 'drive' || SHOT === 'night' || SHOT === 'beach') {
+  if (SHOT === 'drive' || SHOT === 'night' || SHOT === 'beach' || SHOT === 'chase') {
     // Put Dante in the nearest sports car, or the first car.
     const sports = vehicles.cars.find((c) => c.modelKey === 'sports') || vehicles.cars[0];
     if (SHOT === 'beach') {
@@ -234,6 +400,13 @@ function stageShot() {
       sports.x = 0; sports.z = -52; sports.heading = 0;
       engine.setTime(21.5);
       time = 21.5;
+    } else if (SHOT === 'chase') {
+      sports.x = 0; sports.z = 0; sports.heading = 0;
+      sports.speed = 22;
+      engine.setTime(17.5);
+      time = 17.5;
+      police.spawnChase(0, -6, 2);
+      hud.setObjective('Escape the police — wanted level 3!');
     } else {
       sports.x = 0; sports.z = 0; sports.heading = 0;
       engine.setTime(17.5);
@@ -246,9 +419,9 @@ function stageShot() {
     drivenCar = sports;
     sports.setHeadlight(engine.isNight);
     chaseYaw = sports.heading;
-    autoDrive = SHOT === 'drive';
+    autoDrive = SHOT === 'drive' || SHOT === 'chase';
     if (SHOT === 'drive') sports.speed = 22;
-    hud.setObjective('Drive — WASD to steer, Space to drift');
+    if (SHOT !== 'chase') hud.setObjective('Drive — WASD to steer, Space to drift');
   } else if (SHOT === 'foot') {
     player.x = 8; player.z = 30;
     player.camYaw = Math.PI * 0.15;
@@ -267,6 +440,16 @@ window.__solmar = {
   get simSeconds() { return simSeconds; },
   get money() { return money; },
   get time() { return time; },
+  get health() { return health; },
+  get wanted() { return police.wanted; },
+  get mission() { return { current: missions.current, step: missions.step, unlocked: missions.unlocked }; },
+  get peds() { return peds.count; },
+  get traffic() { return traffic.count; },
+  get policeCount() { return police.count; },
+  get coins() { return missions.coinsCollected.size; },
+  get taxi() { return missions.taxi.phase; },
+  get ammo() { return { current: weapons.current, mag: weapons.ammo[weapons.current], reserve: weapons.reserve[weapons.current] }; },
+  get station() { return audio.station; },
   get player() { return { x: player.x, z: player.z, y: player.y, inCar: !!drivenCar, moving: player.moving }; },
   get car() {
     if (!drivenCar) return null;
@@ -289,4 +472,14 @@ window.__solmar = {
   setAutoDrive(b) { autoDrive = b; },
   saveNow() { return saveNow(); },
   readSave() { return localStorage.getItem('solmar-bay-save-v1'); },
+  startMission(i) { return missions.startMission(i); },
+  setWanted(n) { police.setWanted(n); },
+  forceDecay() { police.debugForceDecay(); },
+  damagePlayer(n) { damagePlayer(n, 'debug'); return health; },
+  spawnPedNear(x, z) { peds.spawnPed(false, x, z); return true; },
+  spawnPedAhead(d = 10) {
+    const fx = Math.sin(player.camYaw), fz = Math.cos(player.camYaw);
+    peds.spawnPed(false, player.x + fx * d, player.z + fz * d);
+    return true;
+  },
 };

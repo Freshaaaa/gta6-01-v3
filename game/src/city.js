@@ -50,7 +50,7 @@ export class City {
     // Base ground: dark asphalt for the whole city slab.
     const g = new THREE.Mesh(
       new THREE.PlaneGeometry(900, 900),
-      new THREE.MeshStandardMaterial({ color: 0x3d3a38, roughness: 0.95 }),
+      new THREE.MeshStandardMaterial({ color: 0x4a4441, roughness: 0.95 }),
     );
     g.rotation.x = -Math.PI / 2; g.position.set(0, 0, -40);
     g.receiveShadow = true;
@@ -60,7 +60,7 @@ export class City {
   buildRoads() {
     const rng = this.rng;
     // Road strips (slightly lighter asphalt) + sidewalks per block.
-    const roadMat = new THREE.MeshStandardMaterial({ color: 0x4a4642, roughness: 0.9 });
+    const roadMat = new THREE.MeshStandardMaterial({ color: 0x5e574e, roughness: 0.9 });
     const walkMat = new THREE.MeshStandardMaterial({ color: 0x8d8578, roughness: 0.95 });
     const roads = [];
     for (let i = -CITY_R; i <= CITY_R; i++) roads.push(i * PITCH);
