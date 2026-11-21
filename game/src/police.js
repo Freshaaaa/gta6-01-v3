@@ -3,7 +3,7 @@
 // busted / wasted hooks. Written fresh for the gta6-01 3D rebuild
 // (branch v12-3d, systems build).
 import * as THREE from 'three';
-import { Vehicle, MODELS } from './vehicles.js';
+import { Vehicle, MODELS, hoodTopY, hoodSlope } from './vehicles.js';
 import { makePersonMesh } from './pedestrians.js';
 import { PITCH } from './city.js';
 import { mulberry32 } from './engine.js';
@@ -73,32 +73,38 @@ export class Police {
     // Police top speed is capped below a sedan's: the player can outrun the
     // law in a normal car, but not in a slow van — and never on foot.
     car.model = { ...car.model, top: 30, accel: 12 };
-    // White doors: a pale box slab on each side of the body.
+    // White doors: a pale box slab on each side of the body, kept short and
+    // low so it follows the wedge (the hood slopes away toward the front).
     const doorMat = new THREE.MeshStandardMaterial({ color: 0xe8e8e8, roughness: 0.4, metalness: 0.3 });
     for (const sx of [-1, 1]) {
-      const door = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.5, 1.9), doorMat);
-      door.position.set(sx * (car.model.w / 2 + 0.01), 0.55, 0);
+      const door = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.42, 1.4), doorMat);
+      door.position.set(sx * (car.model.w / 2 + 0.01), 0.48, -0.25);
       car.group.add(door);
     }
     // Light bar: bigger, brighter red + blue emissive boxes on the roof,
     // with additive glow sprites so the car reads as police at a glance
     // (polish: the cover shot showed the old small bars as dark blobs).
+    // Seated just above the roof panel, which sits on the cabin roof.
+    const roofY = car.model.h * 1.06;
     const redMat = new THREE.MeshStandardMaterial({ color: 0x330000, emissive: 0xff2020, emissiveIntensity: 4 });
     const blueMat = new THREE.MeshStandardMaterial({ color: 0x000033, emissive: 0x2244ff, emissiveIntensity: 0.5 });
     const barGeo = new THREE.BoxGeometry(0.8, 0.3, 0.7);
     const red = new THREE.Mesh(barGeo, redMat);
-    red.position.set(-0.45, car.model.h * 1.25, 0);
+    red.position.set(-0.45, roofY + 0.18, 0);
     const blue = new THREE.Mesh(barGeo, blueMat);
-    blue.position.set(0.45, car.model.h * 1.25, 0);
+    blue.position.set(0.45, roofY + 0.18, 0);
     car.group.add(red, blue);
     // White roof panel + hood stripe: the near-black body reads as a
-    // civilian car from the front, the white panels say police.
+    // civilian car from the front, the white panels say police. The stripe
+    // lies on the hood slope (tilted to match it).
     const whiteMat = new THREE.MeshStandardMaterial({ color: 0xe8e8e8, roughness: 0.4, metalness: 0.3 });
     const roofPanel = new THREE.Mesh(new THREE.BoxGeometry(car.model.w * 0.82, 0.05, car.model.l * 0.34), whiteMat);
-    roofPanel.position.set(0, car.model.h * 1.125, 0);
+    roofPanel.position.set(0, roofY, 0);
     car.group.add(roofPanel);
+    const stripeZ = car.model.l * 0.28;
     const hood = new THREE.Mesh(new THREE.BoxGeometry(car.model.w * 0.8, 0.05, car.model.l * 0.3), whiteMat);
-    hood.position.set(0, 0.55 + car.model.h * 0.275 + 0.03, car.model.l * 0.28);
+    hood.position.set(0, hoodTopY(car.model, stripeZ) + 0.03, stripeZ);
+    hood.rotation.x = hoodSlope(car.model);
     car.group.add(hood);
     // Glow sprites (cheap additive quads, no extra lights).
     const glowTex = makeGlowTexture();
@@ -133,7 +139,7 @@ export class Police {
   }
 
   spawnCop(x, z) {
-    const mesh = makePersonMesh(0x1a2a5a, 0xd8a878, 0x1a2a5a);
+    const mesh = makePersonMesh(0x1a2a5a, 0xd8a878, 0x1a2a5a, this.rng);
     this.scene.add(mesh.group);
     const cop = { mesh, x, z, heading: 0, bustT: 0 };
     mesh.group.position.set(x, 0, z);

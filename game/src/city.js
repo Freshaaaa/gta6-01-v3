@@ -11,15 +11,16 @@ export const BEACH_Z = 250;     // sand starts here (south edge)
 export const SEA_Z = 300;       // ocean starts here
 
 // Canvas texture: a building face with lit windows (map + emissive map).
+// Warm dark facade so the golden lit windows glow against it at dusk.
 function windowsTexture(rng) {
   const c = document.createElement('canvas');
   c.width = 128; c.height = 256;
   const g = c.getContext('2d');
-  g.fillStyle = '#8a8f96'; g.fillRect(0, 0, 128, 256);
+  g.fillStyle = '#6e5a50'; g.fillRect(0, 0, 128, 256);
   for (let y = 8; y < 248; y += 18) {
     for (let x = 8; x < 120; x += 18) {
-      const lit = rng() < 0.45;
-      g.fillStyle = lit ? (rng() < 0.7 ? '#ffd98a' : '#9fe8ff') : '#2a2f38';
+      const lit = rng() < 0.55;
+      g.fillStyle = lit ? (rng() < 0.8 ? '#ffd98a' : '#ffb36b') : '#241d1a';
       g.fillRect(x, y, 11, 12);
     }
   }
@@ -28,7 +29,8 @@ function windowsTexture(rng) {
   return t;
 }
 
-const PALETTE = [0xf2c9a0, 0xe8a7a0, 0xf5e6c8, 0xa8c8d8, 0xd8a0b8, 0xc8d8a8, 0xe8c8e8, 0xf0d0b0];
+// Saturated golden-hour facades: terracotta, coral, amber, teal, dusty rose.
+const PALETTE = [0xe8965a, 0xd86a6a, 0xf5d9a0, 0x5a9ab0, 0xc86a8a, 0xe8b060, 0x7ab8a0, 0xf0a060];
 
 export class City {
   constructor(scene, seed = 7) {
@@ -60,6 +62,7 @@ export class City {
   buildRoads() {
     const rng = this.rng;
     // Road strips (slightly lighter asphalt) + sidewalks per block.
+    // Matte asphalt: a glossy road reflects the (dark) sky and reads black.
     const roadMat = new THREE.MeshStandardMaterial({ color: 0x5e574e, roughness: 0.9 });
     const walkMat = new THREE.MeshStandardMaterial({ color: 0x8d8578, roughness: 0.95 });
     const roads = [];
@@ -126,7 +129,7 @@ export class City {
     const geo = new THREE.BoxGeometry(1, 1, 1);
     geo.translate(0, 0.5, 0); // origin at the base, scale y = height
     const mat = new THREE.MeshStandardMaterial({
-      map: tex, emissiveMap: tex, emissive: 0xffffff, emissiveIntensity: 0.55,
+      map: tex, emissiveMap: tex, emissive: 0xffffff, emissiveIntensity: 0.85,
       roughness: 0.8, metalness: 0.1,
     });
     const spots = [];
@@ -189,8 +192,8 @@ export class City {
   buildPalms() {
     const rng = this.rng;
     const spots = [];
-    for (let i = 0; i < 130; i++) {
-      const alongBeach = rng() < 0.45;
+    for (let i = 0; i < 170; i++) { // denser: a living beachfront + avenues
+      const alongBeach = rng() < 0.55;
       let x, z;
       if (alongBeach) { x = (rng() - 0.5) * 520; z = BEACH_Z + 4 + rng() * 30; }
       else {
@@ -210,7 +213,9 @@ export class City {
     const frondGeo = new THREE.ConeGeometry(1.6, 3.4, 4);
     frondGeo.rotateX(Math.PI / 2.6); // droop outward
     frondGeo.scale(1, 1, 0.22); // flatten
-    const frondMat = new THREE.MeshStandardMaterial({ color: 0x2e8a4a, roughness: 0.85, side: THREE.DoubleSide });
+    // Dark silhouette green: against the sunset the palms read as
+    // backlit fronds, the way the top-3 shots frame them.
+    const frondMat = new THREE.MeshStandardMaterial({ color: 0x1e6a38, roughness: 0.85, side: THREE.DoubleSide });
     const fronds = new THREE.InstancedMesh(frondGeo, frondMat, spots.length * 5);
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), s = new THREE.Vector3(), p = new THREE.Vector3();
     spots.forEach((pl, i) => {
@@ -254,7 +259,7 @@ export class City {
     // Neon signs: bright emissive boxes on buildings along the central strip.
     const neonCols = [0xff2a7a, 0x22d8ff, 0xffd23e, 0x7a5cff, 0x37ffa0];
     const neonGeo = new THREE.BoxGeometry(6, 1.4, 0.3);
-    const neons = new THREE.InstancedMesh(neonGeo, new THREE.MeshStandardMaterial({ emissive: 0xffffff, emissiveIntensity: 2.2, color: 0x111111 }), 26);
+    const neons = new THREE.InstancedMesh(neonGeo, new THREE.MeshStandardMaterial({ emissive: 0xffffff, emissiveIntensity: 2.6, color: 0x111111 }), 26);
     const col = new THREE.Color();
     for (let i = 0; i < 26; i++) {
       const bx = (Math.floor(rng() * 9) - 4) * PITCH + PITCH / 2;
@@ -299,11 +304,11 @@ export class City {
     const rng = this.rng;
     const umGeo = new THREE.ConeGeometry(2.2, 1.2, 8);
     const umMat = new THREE.MeshStandardMaterial({ color: 0xff5a7a, roughness: 0.8 });
-    const ums = new THREE.InstancedMesh(umGeo, umMat, 18);
+    const ums = new THREE.InstancedMesh(umGeo, umMat, 26);
     const m = new THREE.Matrix4();
     const col = new THREE.Color();
     const umCols = [0xff5a7a, 0x22d8ff, 0xffd23e, 0xffffff];
-    for (let i = 0; i < 18; i++) {
+    for (let i = 0; i < 26; i++) {
       m.makeTranslation((rng() - 0.5) * 480, 2.2, BEACH_Z + 14 + rng() * 26);
       ums.setMatrixAt(i, m);
       col.setHex(umCols[i % umCols.length]);
@@ -315,13 +320,22 @@ export class City {
   buildOcean() {
     // Teal sea plane, gently animated (opacity + a slow swell).
     const seaMat = new THREE.MeshStandardMaterial({
-      color: 0x1a8a9a, roughness: 0.25, metalness: 0.1,
+      color: 0x14919f, roughness: 0.15, metalness: 0.1,
       transparent: true, opacity: 0.92,
     });
     this.sea = new THREE.Mesh(new THREE.PlaneGeometry(1400, 500), seaMat);
     this.sea.rotation.x = -Math.PI / 2;
     this.sea.position.set(0, 0.12, SEA_Z + 250);
     this.scene.add(this.sea);
+    // Sun glitter: a golden path on the water running from the beach toward
+    // the low south-west sun — the postcard shimmer in the beach shot.
+    const glitMat = new THREE.MeshBasicMaterial({ color: 0xffb36b, transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false });
+    const glitGeo = new THREE.PlaneGeometry(46, 380);
+    glitGeo.rotateX(-Math.PI / 2); // lay flat on the water
+    this.glitter = new THREE.Mesh(glitGeo, glitMat);
+    this.glitter.rotation.y = -0.43; // long axis points at the low sun (-260, 680)
+    this.glitter.position.set(-140, 0.2, 420);
+    this.scene.add(this.glitter);
     // White foam strip where the sea meets the sand.
     const foamMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 });
     this.foam = new THREE.Mesh(new THREE.PlaneGeometry(900, 3), foamMat);
@@ -335,6 +349,7 @@ export class City {
     this.seaTime += dt;
     this.sea.material.opacity = 0.9 + Math.sin(this.seaTime * 0.7) * 0.03;
     this.sea.position.y = 0.12 + Math.sin(this.seaTime * 0.5) * 0.08;
+    this.glitter.material.opacity = 0.26 + Math.sin(this.seaTime * 0.9) * 0.08;
     this.foam.material.opacity = 0.35 + Math.sin(this.seaTime * 1.1) * 0.18;
     this.foam.position.z = SEA_Z - 1 + Math.sin(this.seaTime * 0.6) * 1.6;
   }

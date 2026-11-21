@@ -269,13 +269,17 @@ function updateCamera(dt) {
   const cam = engine.camera;
   if (drivenCar) {
     // Chase cam: ease yaw toward the car's heading, lag the position.
+    // Low and a touch further back — the car fills the frame while the city,
+    // sea and sunset stay in view ahead (poster framing).
     let dy = drivenCar.heading - chaseYaw;
     while (dy > Math.PI) dy -= Math.PI * 2;
     while (dy < -Math.PI) dy += Math.PI * 2;
     chaseYaw += dy * Math.min(1, dt * 2.2);
+    // Slight lateral offset: the camera sits a touch to the car's right, so
+    // the shot is a rear three-quarter view and the wedge profile reads.
     const dist = 7.0, height = 2.7;
-    const tx = drivenCar.x - Math.sin(chaseYaw) * dist;
-    const tz = drivenCar.z - Math.cos(chaseYaw) * dist;
+    const tx = drivenCar.x - Math.sin(chaseYaw) * dist + Math.cos(chaseYaw) * 1.4;
+    const tz = drivenCar.z - Math.cos(chaseYaw) * dist - Math.sin(chaseYaw) * 1.4;
     const k = 1 - Math.exp(-dt * 6);
     camPos.x += (tx - camPos.x) * k;
     camPos.y += (height - camPos.y) * k;
@@ -287,8 +291,10 @@ function updateCamera(dt) {
     if (Math.abs(cam.fov - targetFov) > 0.1) { cam.fov += (targetFov - cam.fov) * Math.min(1, dt * 4); cam.updateProjectionMatrix(); }
   } else {
     // Third-person orbit cam.
-    // ?shot=foot frames Dante closer so the on-foot shot is not mostly empty road.
-    const d = SHOT === 'foot' ? 5.2 : 7.5, cp = Math.cos(player.camPitch), sp = Math.sin(player.camPitch);
+    // ?shot=foot frames Dante at 6.0m: far enough that the street, peds and
+    // marker share the frame with him (he is a rounded humanoid now, not a
+    // cube filling the middle of the shot).
+    const d = SHOT === 'foot' ? 6.0 : 7.5, cp = Math.cos(player.camPitch), sp = Math.sin(player.camPitch);
     const tx = player.x - Math.sin(player.camYaw) * d * cp;
     const tz = player.z - Math.cos(player.camYaw) * d * cp;
     const ty = 1.6 + sp * d;
@@ -405,8 +411,8 @@ function stageShot() {
     const sports = vehicles.cars.find((c) => c.modelKey === 'sports') || vehicles.cars[0];
     if (SHOT === 'beach') {
       sports.x = -40; sports.z = BEACH_Z + 12; sports.heading = 0; // facing the sea (+z), camera behind sees car + beach + ocean
-      engine.setTime(16);
-      time = 16;
+      engine.setTime(17.5); // golden hour: the sun sits over the sea ahead-left
+      time = 17.5;
     } else if (SHOT === 'night') {
       sports.x = 0; sports.z = -52; sports.heading = 0;
       engine.setTime(21.5);
@@ -443,11 +449,22 @@ function stageShot() {
     chaseYaw = sports.heading;
     autoDrive = SHOT === 'drive'; // chase stays put (staged cover shot)
     if (SHOT === 'drive') sports.speed = 22;
+    if (SHOT === 'night') {
+      // Park a car in the next lane ahead: its taillights stay in frame for
+      // the whole night drive. (A moving traffic car drifts out of frame —
+      // it is already 50+ m ahead by the time the player gets rolling.)
+      const parked = vehicles.cars.find((c) => c.modelKey !== 'sports' && c.modelKey !== 'taxi' && !c.police);
+      if (parked) {
+        parked.x = -2.2; parked.z = 10; parked.heading = 0;
+        parked.group.position.set(-2.2, 0, 10);
+        parked.group.rotation.y = 0;
+      }
+    }
     if (SHOT !== 'chase') hud.setObjective('Drive — WASD to steer, Space to drift');
   } else if (SHOT === 'foot') {
     player.x = 8; player.z = 30;
     player.camYaw = Math.PI * 0.15;
-    player.camPitch = 0.3;
+    player.camPitch = 0.18; // flatter orbit: more street + city in frame, less empty sidewalk
     engine.setTime(17.5);
     time = 17.5;
     player.group.position.set(player.x, 0, player.z);

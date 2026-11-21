@@ -20,9 +20,9 @@ export class Engine {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.15;
+    this.renderer.toneMappingExposure = 1.2;
     this.scene = new THREE.Scene();
-    this.scene.fog = new THREE.Fog(0xe8906a, 120, 620);
+    this.scene.fog = new THREE.Fog(0xf0906a, 120, 620);
     this.camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1500);
     this.clock = new THREE.Clock();
     this.acc = 0;
@@ -32,7 +32,7 @@ export class Engine {
     window.addEventListener('resize', () => this.onResize());
 
     // Golden-hour sun: low, warm, long shadows. Shadow camera follows the player.
-    this.sun = new THREE.DirectionalLight(0xffb36b, 2.6);
+    this.sun = new THREE.DirectionalLight(0xffb36b, 2.9);
     this.sun.castShadow = true;
     this.sun.shadow.mapSize.set(2048, 2048);
     const sc = this.sun.shadow.camera;
@@ -40,10 +40,15 @@ export class Engine {
     sc.near = 1; sc.far = 500;
     this.sun.shadow.bias = -0.0004;
     this.scene.add(this.sun, this.sun.target);
-    this.hemi = new THREE.HemisphereLight(0xffc9a0, 0x3a2b4a, 0.9);
+    this.hemi = new THREE.HemisphereLight(0xffc9a0, 0x3a2b4a, 0.85);
     this.scene.add(this.hemi);
     this.amb = new THREE.AmbientLight(0x604060, 0.35);
     this.scene.add(this.amb);
+    // Warm rim light from the east: paints a golden edge on the sides of
+    // buildings and cars facing the camera (the sun itself is low west).
+    this.rim = new THREE.DirectionalLight(0xff8a5c, 0.7);
+    this.rim.position.set(420, 140, 320);
+    this.scene.add(this.rim);
 
     this.buildSky();
   }
@@ -55,12 +60,12 @@ export class Engine {
     this.camera.updateProjectionMatrix();
   }
 
-  // Gradient dusk dome + sun disc + a few flat clouds. This IS the look.
+  // Gradient dusk dome + sun disc + glow + soft warm clouds. This IS the look.
   buildSky() {
     const geo = new THREE.SphereGeometry(900, 24, 16);
     const mat = new THREE.ShaderMaterial({
       side: THREE.BackSide, depthWrite: false, fog: false,
-      uniforms: { top: { value: new THREE.Color(0x6b3a8c) }, mid: { value: new THREE.Color(0xff7e5f) }, bot: { value: new THREE.Color(0xfeb47b) } },
+      uniforms: { top: { value: new THREE.Color(0x54247a) }, mid: { value: new THREE.Color(0xff6a45) }, bot: { value: new THREE.Color(0xffc46b) } },
       vertexShader: 'varying vec3 vP; void main(){ vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
       fragmentShader: `varying vec3 vP; uniform vec3 top; uniform vec3 mid; uniform vec3 bot;
         void main(){ float h = normalize(vP).y; vec3 c = h > 0.18 ? mix(mid, top, smoothstep(0.18, 0.65, h)) : mix(bot, mid, smoothstep(-0.05, 0.18, h));
@@ -68,18 +73,35 @@ export class Engine {
     });
     this.sky = new THREE.Mesh(geo, mat);
     this.scene.add(this.sky);
-    // Sun disc, low on the west horizon.
+    // Sun disc, low over the sea to the south-west — in frame when the
+    // camera looks south (cover, beach, night shots all face +z).
     const sunMat = new THREE.MeshBasicMaterial({ color: 0xffe9a8, fog: false });
     this.sunDisc = new THREE.Mesh(new THREE.CircleGeometry(34, 32), sunMat);
-    this.sunDisc.position.set(-620, 150, -420);
+    this.sunDisc.position.set(-260, 130, 680);
     this.sunDisc.lookAt(0, 60, 0);
     this.scene.add(this.sunDisc);
-    // Clouds: flat white boxes, slowly drifting.
-    const cloudMat = new THREE.MeshBasicMaterial({ color: 0xfff2e0, transparent: true, opacity: 0.75, fog: false });
+    // Sun glow: a big soft additive halo riding on the disc (a child, so it
+    // follows the disc wherever setTime puts it).
+    const gc = document.createElement('canvas');
+    gc.width = 128; gc.height = 128;
+    const gg = gc.getContext('2d');
+    const grad = gg.createRadialGradient(64, 64, 2, 64, 64, 62);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(0.35, 'rgba(255,255,255,0.45)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    gg.fillStyle = grad;
+    gg.fillRect(0, 0, 128, 128);
+    const glowTex = new THREE.CanvasTexture(gc);
+    this.sunGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xffa050, transparent: true, opacity: 0.7, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+    this.sunGlow.scale.set(220, 220, 1);
+    this.sunDisc.add(this.sunGlow);
+    // Clouds: soft flattened ellipsoids, warm-tinted, slowly drifting.
+    const cloudMat = new THREE.MeshBasicMaterial({ color: 0xffd9b8, transparent: true, opacity: 0.55, fog: false });
     this.clouds = [];
     const rng = mulberry32(99);
     for (let i = 0; i < 12; i++) {
-      const c = new THREE.Mesh(new THREE.BoxGeometry(60 + rng() * 90, 6, 22 + rng() * 18), cloudMat);
+      const c = new THREE.Mesh(new THREE.SphereGeometry(1, 12, 8), cloudMat);
+      c.scale.set(50 + rng() * 60, 5 + rng() * 4, 14 + rng() * 10);
       c.position.set((rng() - 0.5) * 1400, 180 + rng() * 120, (rng() - 0.5) * 1400);
       this.clouds.push(c); this.scene.add(c);
     }
@@ -104,32 +126,44 @@ export class Engine {
       this.sun.intensity = 0.6; this.sun.color.setHex(0x8fa8ff);
       this.hemi.intensity = 0.9; this.hemi.color.setHex(0x2a3560); this.hemi.groundColor.setHex(0x1a1420);
       this.amb.intensity = 1.0;
+      this.rim.intensity = 0;
       this.scene.fog.color.setHex(0x1c1a33);
       this.sky.material.uniforms.top.value.setHex(0x0a0a28);
       this.sky.material.uniforms.mid.value.setHex(0x2c1e4e);
       this.sky.material.uniforms.bot.value.setHex(0x4a2a55);
       this.sunDisc.material.color.setHex(0xdde4ff);
       this.sunDisc.position.set(420, 320, -500);
+      this.sunGlow.material.color.setHex(0x8fa8ff);
+      this.sunGlow.material.opacity = 0.35;
+      this.sunGlow.scale.set(150, 150, 1);
     } else if (golden) {
-      this.sun.intensity = 2.6; this.sun.color.setHex(0xffb36b);
-      this.hemi.intensity = 0.9; this.hemi.color.setHex(0xffc9a0); this.hemi.groundColor.setHex(0x3a2b4a);
+      this.sun.intensity = 2.9; this.sun.color.setHex(0xffb36b);
+      this.hemi.intensity = 0.85; this.hemi.color.setHex(0xffc9a0); this.hemi.groundColor.setHex(0x3a2b4a);
       this.amb.intensity = 0.35;
-      this.scene.fog.color.setHex(0xe8906a);
-      this.sky.material.uniforms.top.value.setHex(0x6b3a8c);
-      this.sky.material.uniforms.mid.value.setHex(0xff7e5f);
-      this.sky.material.uniforms.bot.value.setHex(0xfeb47b);
+      this.rim.intensity = 0.7; this.rim.color.setHex(0xff8a5c);
+      this.scene.fog.color.setHex(0xf0906a);
+      this.sky.material.uniforms.top.value.setHex(0x54247a);
+      this.sky.material.uniforms.mid.value.setHex(0xff6a45);
+      this.sky.material.uniforms.bot.value.setHex(0xffc46b);
       this.sunDisc.material.color.setHex(0xffe9a8);
-      this.sunDisc.position.set(-620, 150, -420);
+      this.sunDisc.position.set(-260, 130, 680);
+      this.sunGlow.material.color.setHex(0xffa050);
+      this.sunGlow.material.opacity = 0.7;
+      this.sunGlow.scale.set(220, 220, 1);
     } else {
       this.sun.intensity = 2.2; this.sun.color.setHex(0xfff2d0);
       this.hemi.intensity = 1.0; this.hemi.color.setHex(0xbfd8ff); this.hemi.groundColor.setHex(0x5a6a55);
       this.amb.intensity = 0.4;
+      this.rim.intensity = 0.4; this.rim.color.setHex(0xffe0b0);
       this.scene.fog.color.setHex(0x9fc4e0);
       this.sky.material.uniforms.top.value.setHex(0x3a7bd5);
       this.sky.material.uniforms.mid.value.setHex(0x7ec8e3);
       this.sky.material.uniforms.bot.value.setHex(0xcfeef5);
       this.sunDisc.material.color.setHex(0xfff6c0);
       this.sunDisc.position.set(-300, 420, -500);
+      this.sunGlow.material.color.setHex(0xfff2c0);
+      this.sunGlow.material.opacity = 0.5;
+      this.sunGlow.scale.set(220, 220, 1);
     }
     this.isNight = night;
     return night;

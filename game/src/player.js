@@ -1,15 +1,36 @@
-// Solmar Bay 3D — player: low-poly box humanoid, third-person on-foot
-// movement, camera orbit, enter/exit cars, punch. Written fresh for the
+// Solmar Bay 3D — player: rounded capsule humanoid (no box-people), third-person
+// on-foot movement, camera orbit, enter/exit cars, punch. Written fresh for the
 // gta6-01 3D rebuild (branch v12-3d).
 import * as THREE from 'three';
 
 const WALK_SPEED = 4.2;
 const SPRINT_SPEED = 8.0;
 
-function box(w, h, d, color, x, y, z) {
+function capsule(r, len, color, x, y, z) {
   const m = new THREE.Mesh(
-    new THREE.BoxGeometry(w, h, d),
-    new THREE.MeshStandardMaterial({ color, roughness: 0.85 }),
+    new THREE.CapsuleGeometry(r, len, 6, 14),
+    new THREE.MeshStandardMaterial({ color, roughness: 0.55 }),
+  );
+  m.position.set(x, y, z);
+  m.castShadow = true;
+  return m;
+}
+
+function ball(r, color, x, y, z, sy = 1) {
+  const m = new THREE.Mesh(
+    new THREE.SphereGeometry(r, 18, 14),
+    new THREE.MeshStandardMaterial({ color, roughness: 0.55 }),
+  );
+  m.scale.y = sy;
+  m.position.set(x, y, z);
+  m.castShadow = true;
+  return m;
+}
+
+function limb(r, len, color, x, y, z) {
+  const m = new THREE.Mesh(
+    new THREE.CylinderGeometry(r, r * 0.85, len, 12),
+    new THREE.MeshStandardMaterial({ color, roughness: 0.65 }),
   );
   m.position.set(x, y, z);
   m.castShadow = true;
@@ -19,22 +40,28 @@ function box(w, h, d, color, x, y, z) {
 export class Player {
   constructor(scene) {
     this.group = new THREE.Group();
-    // Dante: teal shirt, dark jeans, skin head, cap.
-    this.torso = box(0.62, 0.72, 0.34, 0x1f8a8a, 0, 1.12, 0);
-    this.head = box(0.42, 0.42, 0.4, 0xd8a878, 0, 1.68, 0);
-    const cap = box(0.46, 0.14, 0.44, 0x222831, 0, 1.92, 0);
-    this.armL = box(0.18, 0.66, 0.2, 0x1f8a8a, -0.42, 1.12, 0);
-    this.armR = box(0.18, 0.66, 0.2, 0x1f8a8a, 0.42, 1.12, 0);
-    this.legL = box(0.22, 0.72, 0.24, 0x2c3550, -0.16, 0.38, 0);
-    this.legR = box(0.22, 0.72, 0.24, 0x2c3550, 0.16, 0.38, 0);
+    // Dante: teal shirt, dark jeans, skin head, cap — all rounded forms.
+    this.torso = capsule(0.27, 0.18, 0x1f8a8a, 0, 1.12, 0);
+    this.head = ball(0.22, 0xd8a878, 0, 1.68, 0);
+    const capDome = ball(0.24, 0x222831, 0, 1.83, 0, 0.55);
+    const capBrim = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.27, 0.27, 0.035, 16),
+      new THREE.MeshStandardMaterial({ color: 0x222831, roughness: 0.6 }),
+    );
+    capBrim.position.set(0, 1.8, 0.08);
+    capBrim.castShadow = true;
+    this.armL = limb(0.085, 0.62, 0x1f8a8a, -0.42, 1.45, 0);
+    this.armR = limb(0.085, 0.62, 0x1f8a8a, 0.42, 1.45, 0);
+    this.legL = limb(0.105, 0.72, 0x2c3550, -0.16, 0.74, 0);
+    this.legR = limb(0.105, 0.72, 0x2c3550, 0.16, 0.74, 0);
     // Pivot the limbs at the shoulder/hip so the walk swing looks right:
     // geometry hangs DOWN from the pivot (translate by -half height).
-    for (const [limb, half] of [[this.armL, 0.33], [this.armR, 0.33], [this.legL, 0.36], [this.legR, 0.36]]) {
-      limb.geometry.translate(0, -half, 0);
+    for (const [l, half] of [[this.armL, 0.31], [this.armR, 0.31], [this.legL, 0.36], [this.legR, 0.36]]) {
+      l.geometry.translate(0, -half, 0);
     }
     this.armL.position.y = 1.45; this.armR.position.y = 1.45;
     this.legL.position.y = 0.74; this.legR.position.y = 0.74;
-    this.group.add(this.torso, this.head, cap, this.armL, this.armR, this.legL, this.legR);
+    this.group.add(this.torso, this.head, capDome, capBrim, this.armL, this.armR, this.legL, this.legR);
     scene.add(this.group);
 
     this.x = 0; this.z = 26; this.y = 0;

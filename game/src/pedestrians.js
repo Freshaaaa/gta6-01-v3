@@ -7,24 +7,33 @@ import { mulberry32 } from './engine.js';
 
 const SHIRTS = [0xd84a4a, 0x4a7ad8, 0x37c878, 0xe8a23a, 0x9a5ad8, 0xe8e8e8, 0x2a2a2a, 0xff7eb8];
 const SKINS = [0xd8a878, 0xb87a4a, 0x8a5a30, 0xf0c8a0];
+const HAIRS = [0x2a1a12, 0x4a2a18, 0x1a1a1a, 0x8a6a3a, 0x6a6a6a];
 const SIDEWALK = ROAD_HALF + 2.5; // distance from a road centre line
 
-// Shared low-poly person: torso, head, legs that swing, arms. Returns the
-// group plus the limb meshes so walkers can animate them.
-export function makePersonMesh(shirt, skin, pants = 0x2c3550) {
+// Shared rounded person: capsule torso, sphere head, cylinder limbs that
+// swing, arms. Returns the group plus the limb meshes so walkers can
+// animate them. No box-people: every form is round.
+export function makePersonMesh(shirt, skin, pants = 0x2c3550, rng = Math.random) {
   const g = new THREE.Group();
-  const mat = (c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.85 });
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.68, 0.32), mat(shirt));
+  const mat = (c, rough = 0.6) => new THREE.MeshStandardMaterial({ color: c, roughness: rough });
+  const torso = new THREE.Mesh(new THREE.CapsuleGeometry(0.25, 0.18, 6, 14), mat(shirt));
   torso.position.y = 1.08; torso.castShadow = true; g.add(torso);
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.4, 0.38), mat(skin));
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.21, 18, 14), mat(skin, 0.55));
   head.position.y = 1.62; head.castShadow = true; g.add(head);
-  const legL = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.68, 0.22), mat(pants));
-  const legR = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.68, 0.22), mat(pants));
+  // Hair: a flattened dark sphere on top of the head (varied per person).
+  if (rng() < 0.6) {
+    const hair = new THREE.Mesh(new THREE.SphereGeometry(0.22, 14, 10), mat(HAIRS[Math.floor(rng() * HAIRS.length)], 0.7));
+    hair.scale.y = 0.5;
+    hair.position.y = 1.74;
+    g.add(hair);
+  }
+  const legL = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.085, 0.68, 12), mat(pants, 0.7));
+  const legR = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.085, 0.68, 12), mat(pants, 0.7));
   legL.geometry.translate(0, -0.34, 0); legR.geometry.translate(0, -0.34, 0);
   legL.position.set(-0.15, 0.7, 0); legR.position.set(0.15, 0.7, 0);
   legL.castShadow = true; legR.castShadow = true; g.add(legL, legR);
-  const armL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.6, 0.18), mat(shirt));
-  const armR = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.6, 0.18), mat(shirt));
+  const armL = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.065, 0.6, 10), mat(shirt));
+  const armR = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.065, 0.6, 10), mat(shirt));
   armL.geometry.translate(0, -0.3, 0); armR.geometry.translate(0, -0.3, 0);
   armL.position.set(-0.39, 1.38, 0); armR.position.set(0.39, 1.38, 0);
   g.add(armL, armR);
@@ -37,13 +46,15 @@ export class Pedestrians {
     this.city = city;
     this.rng = mulberry32(seed);
     this.peds = []; // {mesh, x, z, heading, speed, state, phase, fallT, fleeT, wait}
-    for (let i = 0; i < 24; i++) this.spawnPed(true);
+    for (let i = 0; i < 32; i++) this.spawnPed(true);
   }
 
   spawnPed(anywhere, x = 0, z = 0) {
     const shirt = SHIRTS[Math.floor(this.rng() * SHIRTS.length)];
     const skin = SKINS[Math.floor(this.rng() * SKINS.length)];
-    const mesh = makePersonMesh(shirt, skin);
+    const mesh = makePersonMesh(shirt, skin, 0x2c3550, this.rng);
+    // Slight height variety so the crowd does not read as clones.
+    mesh.group.scale.setScalar(0.94 + this.rng() * 0.12);
     this.scene.add(mesh.group);
     const p = { mesh, x, z, heading: 0, speed: 1.1 + this.rng() * 0.9, state: 'walk', phase: this.rng() * 6, fallT: 0, fleeT: 0, lane: 'v', line: 0, off: SIDEWALK, dir: 1 };
     if (anywhere) this.placeOnSidewalk(p);
