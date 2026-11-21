@@ -76,6 +76,16 @@ mustContain('game/src/save.js', 'solmar-bay-save-v1');
 mustContain('game/src/save.js', 'writeSave');
 mustContain('game/src/audio.js', 'AudioStub');
 mustContain('game/src/audio.js', 'engineOsc');
+// v18 systems gates: the gameplay systems — traffic, pedestrians, police +
+// wanted, 8 story missions, combat — must actually be in the handed-in
+// sources, or the entry is only the core, not the finished game.
+mustContain('game/src/traffic.js', 'export class Traffic');
+mustContain('game/src/pedestrians.js', 'export class Pedestrians');
+mustContain('game/src/police.js', 'export class Police');
+mustContain('game/src/police.js', 'spawnChase');
+mustContain('game/src/missions.js', 'export class Missions');
+mustContain('game/src/missions.js', 'startMission');
+mustContain('game/src/weapons.js', 'export class Weapons');
 mustContain('game/index.html', 'importmap');
 mustContain('game/index.html', 'three.module.min.js');
 mustContain('game/index.html', 'play-btn');

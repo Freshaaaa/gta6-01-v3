@@ -408,11 +408,22 @@ function stageShot() {
       engine.setTime(21.5);
       time = 21.5;
     } else if (SHOT === 'chase') {
+      // Cover shot: Dante's Comet STATIONARY (speed 0, no autoDrive) with
+      // police cars closing in ahead — a moving player outruns every staged
+      // police car before the screenshot (closing speed ~50 m/s, ~2 sim-s to
+      // the shot), so the chase cars behind the camera never appear in frame.
       sports.x = 0; sports.z = 0; sports.heading = 0;
-      sports.speed = 22;
+      sports.speed = 0;
       engine.setTime(17.5);
       time = 17.5;
       police.spawnChase(0, -6, 2);
+      // Two police cars ahead on the road, facing the player: at screenshot
+      // time (~2 sim-s) they are ~15m ahead, flashing light bars visible.
+      for (const [px, pz] of [[-7, 45], [7, 52]]) {
+        const pc = police.spawnPoliceCar(px, pz, true);
+        pc.car.heading = Math.PI;
+        pc.car.group.rotation.y = Math.PI;
+      }
       hud.setObjective('Escape the police — wanted level 3!');
     } else {
       sports.x = 0; sports.z = 0; sports.heading = 0;
@@ -426,7 +437,7 @@ function stageShot() {
     drivenCar = sports;
     sports.setHeadlight(engine.isNight);
     chaseYaw = sports.heading;
-    autoDrive = SHOT === 'drive' || SHOT === 'chase';
+    autoDrive = SHOT === 'drive'; // chase stays put (staged cover shot)
     if (SHOT === 'drive') sports.speed = 22;
     if (SHOT !== 'chase') hud.setObjective('Drive — WASD to steer, Space to drift');
   } else if (SHOT === 'foot') {

@@ -98,9 +98,12 @@ export class Engine {
     this.sun.position.set(Math.cos(ang) * -500, Math.max(el, 0.04) * 320 + 20, -260);
     this.sun.target.position.set(0, 0, 0);
     if (night) {
-      this.sun.intensity = 0.25; this.sun.color.setHex(0x8fa8ff);
-      this.hemi.intensity = 0.35; this.hemi.color.setHex(0x2a3560); this.hemi.groundColor.setHex(0x1a1420);
-      this.amb.intensity = 0.5;
+      // Night is deliberately much brighter than a true night: the car paint
+      // and road are dark materials, and at moonlight levels the neon-night
+      // shot read as a black void. Still a night sky + lit windows.
+      this.sun.intensity = 0.6; this.sun.color.setHex(0x8fa8ff);
+      this.hemi.intensity = 0.9; this.hemi.color.setHex(0x2a3560); this.hemi.groundColor.setHex(0x1a1420);
+      this.amb.intensity = 1.0;
       this.scene.fog.color.setHex(0x1c1a33);
       this.sky.material.uniforms.top.value.setHex(0x0a0a28);
       this.sky.material.uniforms.mid.value.setHex(0x2c1e4e);
