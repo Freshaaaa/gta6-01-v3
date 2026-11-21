@@ -53,6 +53,9 @@ export class Police {
     const modelKey = fast ? 'coupe' : 'sedan';
     const car = new Vehicle(this.scene, modelKey, nearX, nearZ, 0, 0x111318);
     car.police = true;
+    // Police top speed is capped below a sedan's: the player can outrun the
+    // law in a normal car, but not in a slow van — and never on foot.
+    car.model = { ...car.model, top: 30, accel: 12 };
     // White doors: a pale box slab on each side of the body.
     const doorMat = new THREE.MeshStandardMaterial({ color: 0xe8e8e8, roughness: 0.4, metalness: 0.3 });
     for (const sx of [-1, 1]) {
