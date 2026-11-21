@@ -1,25 +1,29 @@
-// v16 clean re-record (01a1f6c1-0eeb-7191-b67c-e5c3196775d3).
-// v16: no functional change — the dev server serves game/ exactly as
-// before (it is also what the playtest uses to load the staged shots).
-// A tiny static server for game/ (Node 22, standard library only), so an entry can be played
-// locally without a build step: `node serve.ts` serves game/ on http://localhost:8080.
-// It sends the MIME types a browser game needs, answers HEAD requests (headers only, so
-// a checker can probe a file without downloading it), refuses any path outside game/,
-// refuses methods other than GET/HEAD with 405, and logs the requests it cannot serve,
-// and otherwise does nothing clever: this is a development convenience, not a web server
-// for the internet.
+// Solmar Bay 3D dev server: serves game/ over HTTP for local play and
+// screenshot staging. Node 22 standard library only; no dependencies.
+// Usage: `node serve.ts [--port N]` (default port 8080, binds 127.0.0.1).
+//
+// Behaviour: GET and HEAD only (anything else is 405 with an Allow
+// header); only files under game/ are served (anything else is 403);
+// missing paths and non-files are 404; served files carry their MIME
+// type, a content-length, and `cache-control: no-store`; HEAD answers
+// with headers only. Requests it cannot serve are logged to stderr.
 import { createReadStream, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = resolve(fileURLToPath(new URL('./game', import.meta.url)));
-const args = process.argv.slice(2);
-const portIndex = args.indexOf('--port');
-const requested = portIndex === -1 ? 8080 : Number(args[portIndex + 1]);
-const port = Number.isInteger(requested) && requested > 0 && requested < 65536 ? requested : 8080;
+const GAME_DIR = resolve(fileURLToPath(new URL('./game', import.meta.url)));
 
-const MIME: Record<string, string> = {
+function pickPort(argv: string[]): number {
+  const i = argv.indexOf('--port');
+  if (i === -1) return 8080;
+  const n = Number(argv[i + 1]);
+  return Number.isInteger(n) && n > 0 && n < 65536 ? n : 8080;
+}
+
+const PORT = pickPort(process.argv.slice(2));
+
+const TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.mjs': 'text/javascript; charset=utf-8',
@@ -43,47 +47,51 @@ const MIME: Record<string, string> = {
   '.txt': 'text/plain; charset=utf-8',
 };
 
+function fail(response, status: number, body: string, headers: Record<string, string> = {}): void {
+  response.writeHead(status, headers).end(body);
+}
+
 createServer((request, response) => {
-  const url = new URL(request.url ?? '/', 'http://localhost');
-  let pathname: string;
+  let path: string;
   try {
-    pathname = decodeURIComponent(url.pathname);
+    path = decodeURIComponent(new URL(request.url ?? '/', 'http://localhost').pathname);
   } catch {
-    response.writeHead(400).end('bad request');
+    fail(response, 400, 'bad request');
     return;
   }
-  if (pathname.endsWith('/')) pathname += 'index.html';
-  // Only reads are served: anything else (POST/PUT/DELETE/…) is not a way
-  // to fetch a game file, so refuse it instead of serving the file anyway.
-  if (request.method !== 'GET' && request.method !== 'HEAD') {
-    response.writeHead(405, { allow: 'GET, HEAD' }).end('method not allowed');
-    console.error(`${request.method} ${pathname} -> 405 method not allowed`);
+  if (path.endsWith('/')) path += 'index.html';
+  const method = request.method ?? '';
+  if (method !== 'GET' && method !== 'HEAD') {
+    fail(response, 405, 'method not allowed', { allow: 'GET, HEAD' });
+    console.error(`${method} ${path} -> 405 method not allowed`);
     return;
   }
-  const file = resolve(join(root, normalize(pathname)));
-  if (file !== root && !file.startsWith(root + sep)) {
-    response.writeHead(403).end('forbidden');
-    console.error(`${request.method} ${pathname} -> 403 forbidden`);
+  const file = resolve(join(GAME_DIR, normalize(path)));
+  if (file !== GAME_DIR && !file.startsWith(GAME_DIR + sep)) {
+    fail(response, 403, 'forbidden');
+    console.error(`${method} ${path} -> 403 forbidden`);
     return;
   }
   let size: number;
   try {
-    const stats = statSync(file);
-    if (!stats.isFile()) throw new Error('not a file');
-    size = stats.size;
+    const info = statSync(file);
+    if (!info.isFile()) throw new Error('not a file');
+    size = info.size;
   } catch {
-    response.writeHead(404).end('not found');
-    console.error(`${request.method} ${pathname} -> 404 not found`);
+    fail(response, 404, 'not found');
+    console.error(`${method} ${path} -> 404 not found`);
     return;
   }
   response.writeHead(200, {
-    'content-type': MIME[extname(file).toLowerCase()] ?? 'application/octet-stream',
+    'content-type': TYPES[extname(file).toLowerCase()] ?? 'application/octet-stream',
     'content-length': size,
     'cache-control': 'no-store',
   });
-  // HEAD asks for the headers only: no body is sent.
-  if (request.method === 'HEAD') { response.end(); return; }
+  if (method === 'HEAD') {
+    response.end();
+    return;
+  }
   createReadStream(file).pipe(response);
-}).listen(port, '127.0.0.1', () => {
-  console.log(`game/ is on http://localhost:${port}`);
+}).listen(PORT, '127.0.0.1', () => {
+  console.log(`game/ is on http://localhost:${PORT}`);
 });
