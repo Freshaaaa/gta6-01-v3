@@ -23,6 +23,11 @@ const SEED = parseInt(params.get('seed') || '7', 10);
 
 const canvas = document.getElementById('game');
 const engine = new Engine(canvas);
+// Test hook: ?lowfx=1 disables shadows for faster software-rendered playtests.
+if (params.get('lowfx')) {
+  engine.renderer.shadowMap.enabled = false;
+  engine.renderer.setPixelRatio(1);
+}
 const city = new City(engine.scene, SEED);
 const player = new Player(engine.scene);
 const vehicles = new VehicleManager(engine.scene, city, SEED + 14);
@@ -448,6 +453,15 @@ window.__solmar = {
   get policeCount() { return police.count; },
   get coins() { return missions.coinsCollected.size; },
   get taxi() { return missions.taxi.phase; },
+  get cops() { return police.cops.length; },
+  get marker() { return missions.markerPos; },
+  get vanPos() { return missions.van ? { x: missions.van.x, z: missions.van.z } : null; },
+  get targetPos() { return missions.target ? { x: missions.target.x, z: missions.target.z } : null; },
+  taxiPos() {
+    const c = vehicles.cars.find((c) => c.modelKey === 'taxi');
+    return c ? { x: c.x, z: c.z, model: c.model.name } : null;
+  },
+  unlockAll() { missions.unlocked = 7; return true; },
   get ammo() { return { current: weapons.current, mag: weapons.ammo[weapons.current], reserve: weapons.reserve[weapons.current] }; },
   get station() { return audio.station; },
   get player() { return { x: player.x, z: player.z, y: player.y, inCar: !!drivenCar, moving: player.moving }; },
@@ -477,6 +491,11 @@ window.__solmar = {
   forceDecay() { police.debugForceDecay(); },
   damagePlayer(n) { damagePlayer(n, 'debug'); return health; },
   spawnPedNear(x, z) { peds.spawnPed(false, x, z); return true; },
+  spawnCopNear() {
+    const p = getPlayer();
+    police.spawnCop(p.x + 3, p.z + 3);
+    return true;
+  },
   spawnPedAhead(d = 10) {
     const fx = Math.sin(player.camYaw), fz = Math.cos(player.camYaw);
     peds.spawnPed(false, player.x + fx * d, player.z + fz * d);

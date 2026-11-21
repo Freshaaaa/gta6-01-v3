@@ -168,15 +168,17 @@ export class Police {
 
     // Wanted decay: only when the trail is cold (no crime recently) and no
     // police unit is close.
-    if (this.wanted > 0 && this.time - this.lastCrimeT > 18 && this.nearestPoliceDist(px, pz) > 45) {
+    if (this.wanted > 0 && this.time - this.lastCrimeT > 12 && this.nearestPoliceDist(px, pz) > 45) {
       this.decayT += dt;
-      if (this.decayT >= 8) { this.decayT = 0; this.wanted = Math.max(0, this.wanted - 1); }
+      if (this.decayT >= 6) { this.decayT = 0; this.wanted = Math.max(0, this.wanted - 1); }
     }
 
-    // Spawn / remove police cars toward the desired count.
+    // Spawn replacements only while the heat is fresh — once the trail is
+    // cold, no new units arrive, so the player can actually escape.
     const want = this.desiredCars();
     this.spawnT -= dt;
-    if (this.cars.filter((c) => !c.leaving && c.hp > 0).length < want && this.spawnT <= 0) {
+    const heatFresh = this.time - this.lastCrimeT < 12;
+    if (heatFresh && this.cars.filter((c) => !c.leaving && c.hp > 0).length < want && this.spawnT <= 0) {
       this.spawnT = 2;
       this.spawnNear(px, pz, this.wanted >= 4 && this.cars.length % 2 === 1);
     }
@@ -200,10 +202,33 @@ export class Police {
     for (const pc of this.cars) {
       if (pc.leaving || pc.hp <= 0) continue;
       const car = pc.car;
-      const desired = Math.atan2(px - car.x, pz - car.z);
-      const steer = Math.max(-1, Math.min(1, angleDiff(desired, car.heading) * 2.2));
       const dist = Math.hypot(px - car.x, pz - car.z);
-      car.update(dt, { throttle: 1, steer, handbrake: false }, this.city);
+      // Give up: if the player stays far away, this unit breaks off.
+      if (dist > 110) {
+        pc.farT = (pc.farT || 0) + dt;
+        if (pc.farT > 4) { pc.leaving = true; continue; }
+      } else {
+        pc.farT = 0;
+      }
+      // Stuck recovery: if we are not closing on the player, reverse out.
+      pc.stuckT = (pc.stuckT || 0) + dt;
+      if (pc.stuckT > 1) {
+        pc.stuckT = 0;
+        if (dist > (pc.lastDist ?? Infinity) - 0.5) pc.stuckN = (pc.stuckN || 0) + 1;
+        else pc.stuckN = 0;
+        pc.lastDist = dist;
+        if ((pc.stuckN || 0) >= 3) { pc.stuckN = 0; pc.reverseT = 1.0; }
+      }
+      let throttle = 1, steer;
+      const desired = Math.atan2(px - car.x, pz - car.z);
+      if (pc.reverseT > 0) {
+        pc.reverseT -= dt;
+        throttle = -1;
+        steer = Math.max(-1, Math.min(1, -angleDiff(desired, car.heading) * 2));
+      } else {
+        steer = Math.max(-1, Math.min(1, angleDiff(desired, car.heading) * 2.2));
+      }
+      car.update(dt, { throttle, steer, handbrake: false }, this.city);
       if (dist < 2.6 && pc.ramCooldown <= 0) {
         pc.ramCooldown = 1.0;
         if (p.inCar && p.car) {
