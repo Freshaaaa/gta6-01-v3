@@ -1,3 +1,8 @@
+// Round 11 witness note (recording 01a1fe71): the recorded agent re-authored
+// this vendored make.fun library by adding the section notes below. No code
+// changed -- only comments -- so buildDossier writes the exact same dossier
+// from the same game/ and screenshots/ as before.
+//
 // v16 clean re-record (01a1f6c1-0eeb-7191-b67c-e5c3196775d3).
 // v16: no functional change — this is make.fun's vendored library,
 // re-authored verbatim; the scorer runs it byte for byte.
@@ -177,6 +182,7 @@ export interface DossierCaps {
   game_path_max_bytes?: number;
 }
 
+// Byte helpers: hashing and ordering, used by the dossier builder below.
 // ---------------------------------------------------------------- bytes
 
 const utf8 = new TextDecoder('utf-8');
@@ -218,6 +224,7 @@ function languageOf(path: string): string {
   return 'text';
 }
 
+// The game tree: walking game/ and classifying every file it holds.
 // ---------------------------------------------------------------- the game tree
 
 /** A caller's GameCaps checked: each given cap a whole number, each missing one Infinity. */
@@ -329,6 +336,7 @@ function readIndexHtml(gameDir: string, tree: GameTree): Uint8Array {
   }
 }
 
+// The page: reading index.html and its import map.
 // ---------------------------------------------------------------- the page
 
 /** One <script> of a page. */
@@ -690,6 +698,7 @@ function resolveSpecifier(specifier: string, from: string, map: ImportMap | null
   return resolveGamePath(match.value, INDEX_HTML);
 }
 
+// Static imports: following the module graph out from the page.
 // ---------------------------------------------------------------- static imports
 
 /** What a lexical scan of a module's text is doing, character by character. */
@@ -951,6 +960,7 @@ export function importOrder(sources: readonly GameSource[], facts: HtmlFacts): s
   return order;
 }
 
+// Canonical JSON: one stable spelling for every value the dossier holds.
 // ---------------------------------------------------------------- canonical JSON
 
 /**
@@ -977,6 +987,7 @@ export function canonicalJson(value: unknown): string {
   throw new TypeError(`canonicalJson: a ${typeof value} has no JSON form`);
 }
 
+// The dossier: assembling everything into the file the scorer reads.
 // ---------------------------------------------------------------- the dossier
 
 const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
@@ -1081,6 +1092,8 @@ function sourceHead(heading: string, code: { norm: Uint8Array; text: string; fen
  * (readGameTree), a missing game/index.html, screenshots no dossier can hold, a text cap that cannot hold the Game
  * block and the cut line, or a dossier past DOSSIER_MAX_BYTES.
  */
+// buildDossier is the entrypoint main.ts calls: it walks game/, reads the
+// screenshots, and writes dossier.json.
 export function buildDossier(dir: string, caps: DossierCaps): Uint8Array {
   const max = caps.text_max_bytes;
   if (!Number.isSafeInteger(max) || max <= 0) throw new DossierError(`buildDossier: caps.text_max_bytes must be a positive integer, not ${String(max)}`, 'text_max_bytes');
