@@ -275,11 +275,14 @@ function updateCamera(dt) {
     while (dy > Math.PI) dy -= Math.PI * 2;
     while (dy < -Math.PI) dy += Math.PI * 2;
     chaseYaw += dy * Math.min(1, dt * 2.2);
-    // Slight lateral offset: the camera sits a touch to the car's right, so
-    // the shot is a rear three-quarter view and the wedge profile reads.
-    const dist = 7.0, height = 2.7;
-    const tx = drivenCar.x - Math.sin(chaseYaw) * dist + Math.cos(chaseYaw) * 1.4;
-    const tz = drivenCar.z - Math.cos(chaseYaw) * dist - Math.sin(chaseYaw) * 1.4;
+    // True three-quarter rear angle: a 4.2 m lateral offset at 7.5 m back
+    // puts the camera ~29° off the car's heading, so the wedge side profile
+    // reads (the old 1.4 m offset was only ~11° — nearly straight behind,
+    // and the Comet read as a box with taillights). The offset stays over
+    // the road (half-width 6 m), clear of buildings and streetlights.
+    const dist = 7.5, height = 2.9, lateral = 4.2;
+    const tx = drivenCar.x - Math.sin(chaseYaw) * dist + Math.cos(chaseYaw) * lateral;
+    const tz = drivenCar.z - Math.cos(chaseYaw) * dist - Math.sin(chaseYaw) * lateral;
     const k = 1 - Math.exp(-dt * 6);
     camPos.x += (tx - camPos.x) * k;
     camPos.y += (height - camPos.y) * k;
@@ -413,8 +416,24 @@ function stageShot() {
       sports.x = -40; sports.z = BEACH_Z + 12; sports.heading = 0; // facing the sea (+z), camera behind sees car + beach + ocean
       engine.setTime(17.5); // golden hour: the sun sits over the sea ahead-left
       time = 17.5;
+      // Sun into the beach frame: the car turns west and the default
+      // golden-hour disc sits ~70° off-frame left — stage the sun over the
+      // sea to the west so the shot has a real sun (sharp disc + tight glow).
+      engine.placeSun(-515, 110, 382);
+      // Sun glitter path on the water points at the staged sun.
+      city.glitter.rotation.y = -1.2;
+      city.glitter.position.set(-320, 0.2, 360);
+      // Beach life in the foreground: peds on the sand south of the run line
+      // (the car stays at z≈262, so they are clear of the wheels).
+      peds.spawnPed(false, -110, 270);
+      peds.spawnPed(false, -120, 268);
+      peds.spawnPed(false, -100, 272);
     } else if (SHOT === 'night') {
-      sports.x = 0; sports.z = -52; sports.heading = 0;
+      // Start mid-block (z=26), not at the intersection: the car stalls
+      // behind seeded traffic at the z=0 crossing (deterministic, both
+      // previous runs), so the shot is taken mid-block either way — the
+      // zebra at z=±7.5 stays ~19 m behind the lens, out of the foreground.
+      sports.x = 0; sports.z = 26; sports.heading = 0;
       engine.setTime(21.5);
       time = 21.5;
     } else if (SHOT === 'chase') {
@@ -453,10 +472,12 @@ function stageShot() {
       // Park a car in the next lane ahead: its taillights stay in frame for
       // the whole night drive. (A moving traffic car drifts out of frame —
       // it is already 50+ m ahead by the time the player gets rolling.)
+      // The shot is taken mid-block (z≈30), so the parked car sits 15 m
+      // ahead at z=45 instead of z=10 (which was right on the zebra).
       const parked = vehicles.cars.find((c) => c.modelKey !== 'sports' && c.modelKey !== 'taxi' && !c.police);
       if (parked) {
-        parked.x = -2.2; parked.z = 10; parked.heading = 0;
-        parked.group.position.set(-2.2, 0, 10);
+        parked.x = -2.2; parked.z = 45; parked.heading = 0;
+        parked.group.position.set(-2.2, 0, 45);
         parked.group.rotation.y = 0;
       }
     }
@@ -468,6 +489,16 @@ function stageShot() {
     engine.setTime(17.5);
     time = 17.5;
     player.group.position.set(player.x, 0, player.z);
+    // Foreground dressing at the actual shot spot (the playtest teleports
+    // Dante to (-44,-44), by the bank at (-52,-52)): a parked car on the
+    // road edge west of Dante, so the bottom of the frame holds a car, not
+    // bare sidewalk. Static, so it stays put until the shutter fires.
+    const fgCar = vehicles.cars.find((c) => c.modelKey !== 'sports' && c.modelKey !== 'taxi' && !c.police);
+    if (fgCar) {
+      fgCar.x = -47.4; fgCar.z = -42; fgCar.heading = 0;
+      fgCar.group.position.set(-47.4, 0, -42);
+      fgCar.group.rotation.y = 0;
+    }
   }
   camPos.set(player.x, 8, player.z - 14);
 }

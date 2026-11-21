@@ -315,6 +315,64 @@ export class City {
       ums.setColorAt(i, col);
     }
     this.scene.add(ums);
+    // Foreground cluster for the beach-run shot: the camera looks west along
+    // the sand and the bottom of the frame was empty tan. Umbrellas with
+    // real poles, towels and a lifeguard stand sit right on the run line
+    // (x -95..-140, z 256..276) so the foreground holds beach life.
+    const fgCols = [0xff5a7a, 0x22d8ff, 0xffd23e, 0xffffff, 0xff9040];
+    const fgPoleGeo = new THREE.CylinderGeometry(0.06, 0.06, 2.4, 6);
+    const fgPoleMat = new THREE.MeshStandardMaterial({ color: 0xe8e0d0, roughness: 0.8 });
+    const fgUmGeo = new THREE.ConeGeometry(2.2, 1.2, 8);
+    const fgUmSpots = [[-100, 270], [-112, 274], [-124, 268], [-134, 272], [-106, 264]];
+    fgUmSpots.forEach(([x, z], i) => {
+      const pole = new THREE.Mesh(fgPoleGeo, fgPoleMat);
+      pole.position.set(x, 1.2, z);
+      pole.castShadow = true;
+      this.scene.add(pole);
+      const um = new THREE.Mesh(fgUmGeo, new THREE.MeshStandardMaterial({ color: fgCols[i % fgCols.length], roughness: 0.8 }));
+      um.position.set(x, 3.0, z);
+      um.castShadow = true;
+      this.scene.add(um);
+    });
+    // Towels: bright flat rectangles on the sand north of the run line.
+    const towelCols = [0xff5a7a, 0x22d8ff, 0xffd23e, 0x37ffa0];
+    const towelSpots = [[-102, 254], [-114, 255], [-126, 254], [-136, 255]];
+    towelSpots.forEach(([x, z], i) => {
+      const t = new THREE.Mesh(
+        new THREE.BoxGeometry(1.9, 0.06, 0.95),
+        new THREE.MeshStandardMaterial({ color: towelCols[i % towelCols.length], roughness: 0.95 }),
+      );
+      t.position.set(x, 0.12, z);
+      t.rotation.y = (i - 1.5) * 0.25;
+      t.receiveShadow = true;
+      this.scene.add(t);
+    });
+    // Lifeguard stand: tall white tower with a red roof, south of the run line.
+    const lg = new THREE.Group();
+    const lgMat = new THREE.MeshStandardMaterial({ color: 0xf5f0e8, roughness: 0.8 });
+    const lgRed = new THREE.MeshStandardMaterial({ color: 0xe84040, roughness: 0.8 });
+    for (const [lx, lz] of [[-0.8, -0.8], [0.8, -0.8], [-0.8, 0.8], [0.8, 0.8]]) {
+      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.14, 3.2, 0.14), lgMat);
+      leg.position.set(lx, 1.6, lz);
+      lg.add(leg);
+    }
+    const lgPlatform = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.18, 2.2), lgMat);
+    lgPlatform.position.set(0, 3.3, 0);
+    lg.add(lgPlatform);
+    const lgSeat = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.5, 1.2), lgRed);
+    lgSeat.position.set(0, 3.65, -0.3);
+    lg.add(lgSeat);
+    const lgRoof = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.12, 2.6), lgRed);
+    lgRoof.position.set(0, 4.6, 0);
+    lg.add(lgRoof);
+    for (const [rx, rz] of [[-1.1, -1.1], [1.1, -1.1], [-1.1, 1.1], [1.1, 1.1]]) {
+      const post = new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.2, 0.1), lgMat);
+      post.position.set(rx, 4.0, rz);
+      lg.add(post);
+    }
+    lg.position.set(-118, 0, 272);
+    lg.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    this.scene.add(lg);
   }
 
   buildOcean() {
