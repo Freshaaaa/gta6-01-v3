@@ -15,6 +15,23 @@ function angleDiff(a, b) {
   return d;
 }
 
+// Shared radial-gradient texture for the police light-bar glow sprites.
+let _glowTex = null;
+function makeGlowTexture() {
+  if (_glowTex) return _glowTex;
+  const c = document.createElement('canvas');
+  c.width = 64; c.height = 64;
+  const g = c.getContext('2d');
+  const grad = g.createRadialGradient(32, 32, 2, 32, 32, 30);
+  grad.addColorStop(0, 'rgba(255,255,255,1)');
+  grad.addColorStop(0.4, 'rgba(255,255,255,0.5)');
+  grad.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = grad;
+  g.fillRect(0, 0, 64, 64);
+  _glowTex = new THREE.CanvasTexture(c);
+  return _glowTex;
+}
+
 export class Police {
   constructor(scene, city, ctx) {
     this.scene = scene;
@@ -63,17 +80,37 @@ export class Police {
       door.position.set(sx * (car.model.w / 2 + 0.01), 0.55, 0);
       car.group.add(door);
     }
-    // Light bar: red + blue emissive boxes on the roof.
-    const redMat = new THREE.MeshStandardMaterial({ color: 0x330000, emissive: 0xff2020, emissiveIntensity: 2 });
-    const blueMat = new THREE.MeshStandardMaterial({ color: 0x000033, emissive: 0x2244ff, emissiveIntensity: 0.2 });
-    const barGeo = new THREE.BoxGeometry(0.55, 0.16, 0.5);
+    // Light bar: bigger, brighter red + blue emissive boxes on the roof,
+    // with additive glow sprites so the car reads as police at a glance
+    // (polish: the cover shot showed the old small bars as dark blobs).
+    const redMat = new THREE.MeshStandardMaterial({ color: 0x330000, emissive: 0xff2020, emissiveIntensity: 4 });
+    const blueMat = new THREE.MeshStandardMaterial({ color: 0x000033, emissive: 0x2244ff, emissiveIntensity: 0.5 });
+    const barGeo = new THREE.BoxGeometry(0.8, 0.3, 0.7);
     const red = new THREE.Mesh(barGeo, redMat);
-    red.position.set(-0.3, car.model.h * 1.08, 0);
+    red.position.set(-0.45, car.model.h * 1.25, 0);
     const blue = new THREE.Mesh(barGeo, blueMat);
-    blue.position.set(0.3, car.model.h * 1.08, 0);
+    blue.position.set(0.45, car.model.h * 1.25, 0);
     car.group.add(red, blue);
+    // White roof panel + hood stripe: the near-black body reads as a
+    // civilian car from the front, the white panels say police.
+    const whiteMat = new THREE.MeshStandardMaterial({ color: 0xe8e8e8, roughness: 0.4, metalness: 0.3 });
+    const roofPanel = new THREE.Mesh(new THREE.BoxGeometry(car.model.w * 0.82, 0.05, car.model.l * 0.34), whiteMat);
+    roofPanel.position.set(0, car.model.h * 1.125, 0);
+    car.group.add(roofPanel);
+    const hood = new THREE.Mesh(new THREE.BoxGeometry(car.model.w * 0.8, 0.05, car.model.l * 0.3), whiteMat);
+    hood.position.set(0, 0.55 + car.model.h * 0.275 + 0.03, car.model.l * 0.28);
+    car.group.add(hood);
+    // Glow sprites (cheap additive quads, no extra lights).
+    const glowTex = makeGlowTexture();
+    const redGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xff2a2a, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false }));
+    redGlow.scale.set(2.6, 1.5, 1);
+    redGlow.position.copy(red.position);
+    const blueGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0x2a55ff, transparent: true, opacity: 0.15, blending: THREE.AdditiveBlending, depthWrite: false }));
+    blueGlow.scale.set(2.6, 1.5, 1);
+    blueGlow.position.copy(blue.position);
+    car.group.add(redGlow, blueGlow);
     this.scene.add(car.group); // Vehicle already added it; add() again is a no-op move
-    const pc = { car, redMat, blueMat, hp: 100, ramCooldown: 0, leaving: false };
+    const pc = { car, redMat, blueMat, redGlow, blueGlow, hp: 100, ramCooldown: 0, leaving: false };
     this.cars.push(pc);
     return pc;
   }
@@ -122,6 +159,8 @@ export class Police {
       pc.car.speed = 0;
       pc.redMat.emissiveIntensity = 0.1;
       pc.blueMat.emissiveIntensity = 0.1;
+      pc.redGlow.material.opacity = 0.05;
+      pc.blueGlow.material.opacity = 0.05;
       this.addWanted(1);
       return true;
     }
@@ -164,8 +203,10 @@ export class Police {
     const phase = Math.floor(this.flashT / 0.35) % 2 === 0;
     for (const pc of this.cars) {
       if (pc.hp <= 0) continue;
-      pc.redMat.emissiveIntensity = phase ? 2.4 : 0.15;
-      pc.blueMat.emissiveIntensity = phase ? 0.15 : 2.4;
+      pc.redMat.emissiveIntensity = phase ? 4 : 0.5;
+      pc.blueMat.emissiveIntensity = phase ? 0.5 : 4;
+      pc.redGlow.material.opacity = phase ? 0.9 : 0.15;
+      pc.blueGlow.material.opacity = phase ? 0.15 : 0.9;
       if (pc.ramCooldown > 0) pc.ramCooldown -= dt;
     }
 

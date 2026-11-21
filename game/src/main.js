@@ -62,6 +62,11 @@ function getPlayer() {
   };
 }
 
+// Load the save BEFORE the systems: Missions.buildCoins() must know which
+// sun coins are already collected, or they re-spawn and pay twice on reload
+// (polish fix: the coin at the saved position re-collected every load).
+const saved = loadSave();
+
 // --- systems (constructed after the core, wired through closures) ---
 const police = new Police(engine.scene, city, {
   getPlayer,
@@ -79,7 +84,7 @@ const missions = new Missions(engine.scene, city, {
   addMoney: (n) => { money += n; hud.setMoney(money); },
   saveNow: () => saveNow(),
   unlocked: 0,
-  coinsCollected: [],
+  coinsCollected: saved?.coins ?? [],
 });
 const weapons = new Weapons(engine.scene, {
   camera: engine.camera,
@@ -93,8 +98,7 @@ const weapons = new Weapons(engine.scene, {
   onShot: (pos) => { lastShot = pos; lastShotT = simSeconds; },
 });
 
-// --- save ---
-const saved = loadSave();
+// --- save (loaded above, before the systems) ---
 if (saved) {
   money = saved.money;
   player.x = saved.x ?? player.x;
@@ -108,7 +112,6 @@ if (saved) {
     weapons.reserve = saved.weapons.reserve ?? weapons.reserve;
   }
   if (typeof saved.mission === 'number') missions.unlocked = saved.mission;
-  if (Array.isArray(saved.coins)) missions.coinsCollected = new Set(saved.coins);
 }
 engine.setTime(time);
 hud.setMoney(money);
@@ -284,7 +287,8 @@ function updateCamera(dt) {
     if (Math.abs(cam.fov - targetFov) > 0.1) { cam.fov += (targetFov - cam.fov) * Math.min(1, dt * 4); cam.updateProjectionMatrix(); }
   } else {
     // Third-person orbit cam.
-    const d = 7.5, cp = Math.cos(player.camPitch), sp = Math.sin(player.camPitch);
+    // ?shot=foot frames Dante closer so the on-foot shot is not mostly empty road.
+    const d = SHOT === 'foot' ? 5.2 : 7.5, cp = Math.cos(player.camPitch), sp = Math.sin(player.camPitch);
     const tx = player.x - Math.sin(player.camYaw) * d * cp;
     const tz = player.z - Math.cos(player.camYaw) * d * cp;
     const ty = 1.6 + sp * d;
