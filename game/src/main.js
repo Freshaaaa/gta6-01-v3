@@ -480,6 +480,12 @@ window.__solmar = {
   },
   get buildings() { return city.buildingCount; },
   teleport(x, z) { if (drivenCar) { drivenCar.x = x; drivenCar.z = z; } else { player.x = x; player.z = z; player.group.position.set(x, 0, z); } },
+  setHeading(h) {
+    if (drivenCar) { drivenCar.heading = h; drivenCar.group.rotation.y = h; }
+    else { player.yaw = h; player.camYaw = h; }
+    chaseYaw = h;
+    return true;
+  },
   setTime(h) { time = h; engine.setTime(h); },
   enterNearestCar() { toggleCar(); return !!drivenCar; },
   exitCar() { if (drivenCar) toggleCar(); return !drivenCar; },
