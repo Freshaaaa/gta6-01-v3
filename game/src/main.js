@@ -76,9 +76,12 @@ const camera = createCamera();
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x1a1218);
 
-// Golden-hour lights (v5: sun 2.8, exposure 1.6; hemisphere/ambient lifted
-// so the low sun's shadow side — the road and the camera-facing facades
-// on the cover — read bright instead of muddy brown).
+// Golden-hour lighting. The sun is low and warm (intensity 2.8), but
+// its shadow side — the road and the facades facing the chase camera on
+// the cover — gets almost no direct light, so the scene needs strong
+// fill: hemisphere 1.3 (warm sky / mauve ground) plus ambient 0.8.
+// Exposure comes from SUN.exposure (1.65). Together these lift the
+// cover from ~91 to ~118 without washing out the beach.
 renderer.toneMappingExposure = SUN.exposure;
 const sunLight = new THREE.DirectionalLight(SUN.color, SUN.intensity);
 sunLight.position.set(SUN.position[0], SUN.position[1], SUN.position[2]);

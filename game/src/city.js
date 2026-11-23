@@ -429,46 +429,59 @@ function buildStreet(scene, rng) {
 }
 
 // --- beach / ocean / pier (resort luxury) ------------------------------------
+// The beach is the resort half of the map: deep warm sand (SAND, darkened
+// for the brighter v5 lighting), a wide rich-blue ocean, a white foam line
+// at the shoreline, a row of coloured umbrellas flanking the beach drive
+// lane, and a wooden pier with a hut at its end. Umbrella positions use
+// the shared rng in a fixed order (x jitter, z jitter, colour pick per
+// umbrella) so the layout is deterministic for a given seed.
+const UMBRELLA_COUNT = 10;
+const UMBRELLA_SPACING = 36; // metres between umbrellas along the beach
+const UMBRELLA_X0 = -170; // first umbrella x
+const UMBRELLA_Z_LANES = [232, 248]; // two rows flanking the drive lane (z=240)
+const UMBRELLA_COLORS = [0xe82828, 0xf8d828, 0x28b8b8, 0xff7a2a, 0x2a6ad8];
 function buildBeach(scene, rng) {
   const group = new THREE.Group();
-  // Sand (two-tone, lighter near the water).
+  // Sand: two-tone gradient, lighter near the water.
   const sand = new THREE.Mesh(PLANE, new THREE.MeshLambertMaterial({ map: sandTexture() }));
   sand.rotation.x = -Math.PI / 2;
   sand.scale.set(560, BEACH_END - BEACH_START + 20, 1);
   sand.position.set(0, 0.06, (BEACH_START + BEACH_END) / 2);
   group.add(sand);
-  // Ocean: wider, richer blue, with a horizon line.
+  // Ocean: wider and richer blue than the city side, with a horizon line.
   const ocean = new THREE.Mesh(PLANE, lam(OCEAN));
   ocean.rotation.x = -Math.PI / 2;
   ocean.scale.set(1200, OCEAN_END - BEACH_END + 40, 1);
   ocean.position.set(0, 0.0, (BEACH_END + OCEAN_END) / 2);
   group.add(ocean);
-  // White foam line at the shoreline (two strips, one animated later).
+  // White foam lines at the shoreline (a bright one plus a fainter one
+  // further out, which the animation moves later).
   const foam = box(basic(FOAM, { transparent: true, opacity: 0.9 }), 560, 0.1, 2.2, 0, 0.08, BEACH_END - 1);
   group.add(foam);
   const foam2 = box(basic(FOAM, { transparent: true, opacity: 0.55 }), 560, 0.1, 1.4, 0, 0.08, BEACH_END + 6);
   group.add(foam2);
-  // Beach umbrellas (coloured cones) + lounge chairs. They flank the
-  // beach drive lane (z=240, the shot's westward run) on both sides so
-  // the car drives between them — a resort row, not distant dots.
-  const umbrellaColors = [0xe82828, 0xf8d828, 0x28b8b8, 0xff7a2a, 0x2a6ad8];
-  for (let i = 0; i < 10; i++) {
-    const x = -170 + i * 36 + range(rng, -6, 6);
-    const z = 232 + (i % 2) * 16 + range(rng, -2, 2);
+  // Beach umbrellas (coloured cones on poles) + lounge chairs. They stand
+  // in two rows on either side of the beach drive lane, so the car drives
+  // between them — a resort row, not distant dots. Each umbrella gets a
+  // small random x/z jitter and a random colour from the palette.
+  for (let i = 0; i < UMBRELLA_COUNT; i++) {
+    const ux = UMBRELLA_X0 + i * UMBRELLA_SPACING + range(rng, -6, 6);
+    const uz = UMBRELLA_Z_LANES[i % 2] + range(rng, -2, 2);
     const pole = new THREE.Mesh(CYL, lam(0x8a7a5a));
     pole.scale.set(0.09, 2.4, 0.09);
-    pole.position.set(x, 1.2, z);
+    pole.position.set(ux, 1.2, uz);
     group.add(pole);
-    const top = new THREE.Mesh(CONE, lam(pick(rng, umbrellaColors)));
+    const top = new THREE.Mesh(CONE, lam(pick(rng, UMBRELLA_COLORS)));
     top.scale.set(2.6, 1.1, 2.6);
-    top.position.set(x, 2.8, z);
+    top.position.set(ux, 2.8, uz);
     group.add(top);
-    // Lounge chair.
-    group.add(box(lam(0xe8e0d0), 1.8, 0.35, 0.7, x + 2.6, 0.35, z + 1));
-    group.add(box(lam(0xe8e0d0), 0.7, 0.8, 0.7, x + 3.4, 0.5, z + 1));
+    // Lounge chair beside each umbrella (flat seat + raised back).
+    group.add(box(lam(0xe8e0d0), 1.8, 0.35, 0.7, ux + 2.6, 0.35, uz + 1));
+    group.add(box(lam(0xe8e0d0), 0.7, 0.8, 0.7, ux + 3.4, 0.5, uz + 1));
   }
-  // Wooden pier extending into the ocean (planks + posts + hut at the end).
-  // Wider + lighter wood so it reads against the sand from the beach drive.
+  // Wooden pier reaching out into the ocean (planks + posts + a hut at
+  // the far end). Wide and light wood so it reads against the sand when
+  // seen from the beach drive.
   const pierZ0 = BEACH_END - 4, pierZ1 = BEACH_END + 56;
   const pierLen = pierZ1 - pierZ0;
   const pier = box(lam(0xa0805a), 9, 0.5, pierLen, -60, 0.7, (pierZ0 + pierZ1) / 2);
@@ -477,7 +490,7 @@ function buildBeach(scene, rng) {
     group.add(box(lam(0x7a5a3a), 0.5, 1.6, 0.5, -64.2, 0.2, z));
     group.add(box(lam(0x7a5a3a), 0.5, 1.6, 0.5, -55.8, 0.2, z));
   }
-  // Hut at the end of the pier.
+  // Hut at the end of the pier (box + cone roof).
   group.add(box(lam(0xa8805a), 5, 3.4, 4.5, -60, 2.4, pierZ1 - 3));
   const hutRoof = new THREE.Mesh(CONE, lam(0x7a3a28));
   hutRoof.scale.set(3.6, 1.8, 3.2);

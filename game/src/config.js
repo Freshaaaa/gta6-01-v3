@@ -15,13 +15,16 @@ export const SUN_COIN = { x: 0, z: 270 }; // sun coin pickup (+$250)
 export const START_MONEY = 0; // fresh profile money
 export const SAVE_KEY = 'solmar-bay-save-v1';
 
-// Golden-hour light (v5: richer, warmer; exposure guard keeps cover ~118-122).
+// Golden-hour sun (v5: richer, warmer). The sun hangs low near the
+// horizon, so its light rakes across the road and the facades facing
+// the chase camera instead of hitting them head-on — at exposure 1.35
+// the cover read only ~91 (dark). Exposure 1.65, together with the
+// stronger hemisphere + ambient fill in main.js, lifts the cover to
+// ~118-122 without blowing out the beach.
 export const SUN = {
   color: 0xffb45e, // warm orange sun
   intensity: 2.8,
-  exposure: 1.65, // lifted from 1.35: the low sun barely lights the road /
-  // the camera-facing facades, so the cover read 91; 1.65 + stronger
-  // hemisphere/ambient brings it to ~118-122.
+  exposure: 1.65,
   position: [-140, 90, 260], // low near the horizon, west-ish
 };
 export const SKY = {
@@ -30,10 +33,13 @@ export const SKY = {
   top: '#4a5a8a', // dusky blue at the top
 };
 export const ASPHALT = 0x9a938a; // light grey-brown asphalt (NOT dark)
-export const SAND = 0xb89a68; // warm sand (deep tan — the pale 0xd8c898
+// Beach sand: a deep warm tan, with a lighter tone near the water for
+// the two-tone gradient. The pale sand (0xd8c898) washed out under the
+// brighter v5 lighting — the beach shot hit luminance ~167, almost
+// white. These deeper tones bring it back to the ~140s, warmer and
+// textured, so the sand reads as sand instead of glare.
+export const SAND = 0xb89a68;
 export const SAND_LIGHT = 0xcbb489; // lighter sand near the water.
-// Sand darkened: with the brighter v5 lighting the pale sand washed the
-// beach out to luminance ~167; these bring it to ~140s, warmer + textured.
 export const OCEAN = 0x2e7fa8; // rich lighter blue ocean
 export const FOAM = 0xf4fbff; // white foam line
 

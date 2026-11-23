@@ -1,17 +1,23 @@
 // Solmar Bay 3D — engine (v5, from the brief).
-// Renderer (ACES tone mapping, exposure 1.35), a fixed timestep loop
-// (dt cap 0.2, max 12 substeps — the v4 "wall-clock freeze" fix), keyboard
-// input, and the localStorage save (key solmar-bay-save-v1).
+// Renderer (ACES tone mapping, exposure matched to the golden-hour sun),
+// a fixed timestep loop (dt cap 0.2, max 12 substeps — the v4
+// "wall-clock freeze" fix), keyboard input, and the localStorage save
+// (key solmar-bay-save-v1).
 
 import * as THREE from '../vendor/three.module.min.js';
 import { ENGINE } from './config.js';
 
+// The renderer starts at the same exposure the golden-hour sun uses
+// (SUN.exposure = 1.65, applied again in main.js after setup). The low
+// sun sits almost level with the road, so it barely lights the asphalt
+// and the facades facing the camera; 1.35 left the cover at luminance
+// ~91 (dark, muddy). 1.65 is the value that brings the cover to ~118.
 export function createRenderer(container, antialias = true) {
   const renderer = new THREE.WebGLRenderer({ antialias, powerPreference: 'high-performance' });
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.35;
+  renderer.toneMappingExposure = 1.65;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   container.appendChild(renderer.domElement);
   return renderer;

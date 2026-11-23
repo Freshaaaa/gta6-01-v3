@@ -107,22 +107,25 @@ export class Traffic {
     }
   }
 
-  // Staged cars for the cover shot: frozen, skipped by the chase loop.
+  // Staged cars for the cover shot. They are placed at fixed spots on the
+  // road ahead of the Comet and frozen there (speed 0, staged: true), so
+  // the chase loop skips them and they hold their positions for the shot.
+  // Five separate cars, no overlap, each a different model/colour.
   stageCars() {
     const staged = [];
-    const defs = [
+    const spots = [
       { x: -3.5, z: 58, model: 'Coupe', color: 0xd82828 },
       { x: 7, z: 24, model: 'Sport', color: 0x189098 },
       { x: 0, z: 72, model: 'Van', color: 0x9a9a9a },
       { x: -6, z: 40, model: 'Sedan', color: 0x28408a },
       { x: 5, z: 90, model: 'Hatch', color: 0xe8a028 },
     ];
-    for (const d of defs) {
-      const made = makeCar({ color: d.color, isVan: d.model === 'Van', sport: d.model === 'Sport' });
-      made.group.position.set(d.x, 0.02, d.z);
+    for (const s of spots) {
+      const made = makeCar({ color: s.color, isVan: s.model === 'Van', sport: s.model === 'Sport' });
+      made.group.position.set(s.x, 0.02, s.z);
       made.group.rotation.y = 0; // facing north, same as the Comet
       this.scene.add(made.group);
-      const car = { ...made, x: d.x, z: d.z, heading: 0, speed: 0, model: d.model, color: d.color, staged: true, police: false };
+      const car = { ...made, x: s.x, z: s.z, heading: 0, speed: 0, model: s.model, color: s.color, staged: true, police: false };
       this.cars.push(car);
       staged.push(car);
     }
