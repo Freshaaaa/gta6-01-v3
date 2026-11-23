@@ -1,157 +1,196 @@
-// Solmar Bay 3D — traffic: AI cars driving the lane graph, car-following,
-// intersection turns, despawn/respawn near the player. Written fresh for the
-// gta6-01 3D rebuild (branch v12-3d, systems build).
-import * as THREE from 'three';
-import { Vehicle, MODELS } from './vehicles.js';
-import { PITCH, CITY_R, ROAD_HALF } from './city.js';
-import { mulberry32 } from './engine.js';
+// Solmar Bay 3D — traffic: the 14 circulating cars, the parked cars Dante
+// can steal, the staged cars for the cover shot, and the taxi job's cab.
+// Traffic cars drive along the streets in lanes, slow for the car ahead,
+// and turn at intersections. Parked cars sit at the kerb; the nearest one
+// is what nearestCarPos() returns. Staged cars (parkSpots) are placed by
+// hand for the cover shot and never move — the chase loop skips them.
+import { buildCar, CAR_COLORS } from './vehicles.js';
 
-const LANE = 2.2; // right-hand lane offset from the road centre line
+export const TRAFFIC_COUNT = 14;
 
-function headingFrom(axis, dir) {
-  if (axis === 'z') return dir > 0 ? 0 : Math.PI;
-  return dir > 0 ? Math.PI / 2 : -Math.PI / 2;
-}
+// The cover shot's staged cars: five separate cars ahead of the Comet, on
+// the main street, each marked staged so nothing moves them mid-shot.
+export const PARK_SPOTS = [
+  [-3.5, 58],
+  [7, 24],
+  [0, 72],
+  [-6, 40],
+  [6.5, 86],
+];
 
-const TRAFFIC_COLORS = [0xb8bcc4, 0x8a94a8, 0xd8d0c0, 0x5a7a8a, 0xa88a5a, 0x7a5a8a, 0x4a6a4a, 0xc8c8c8];
+const TRAFFIC_MODELS = [
+  { color: CAR_COLORS.red, model: 'Coupe', spoiler: true },
+  { color: CAR_COLORS.teal, model: 'Sports', spoiler: true },
+  { color: CAR_COLORS.grey, model: 'Van', spoiler: false },
+  { color: CAR_COLORS.blue, model: 'Sedan', spoiler: false },
+  { color: CAR_COLORS.purple, model: 'Coupe', spoiler: true },
+];
 
-export class Traffic {
-  constructor(scene, city, seed = 31) {
-    this.scene = scene;
-    this.city = city;
-    this.rng = mulberry32(seed);
-    this.cars = []; // {car, axis, dir, road, speed, targetSpeed, disabled}
-    this.keys = Object.keys(MODELS).filter((k) => k !== 'taxi');
-    for (let i = 0; i < 14; i++) this.spawnCar(true);
-  }
+export function createTraffic(G) {
+  const rng = G.rng;
+  const traffic = {
+    cars: [],
+    parked: [],
+    staged: [],
+    taxi: null,
 
-  randomRoad() {
-    return (Math.floor(this.rng() * (CITY_R * 2 + 1)) - CITY_R) * PITCH;
-  }
-
-  placeOnRoad(tc, nearX = 0, nearZ = 0) {
-    const axis = this.rng() < 0.5 ? 'x' : 'z';
-    const dir = this.rng() < 0.5 ? 1 : -1;
-    const road = this.randomRoad();
-    const along = (this.rng() - 0.5) * 520;
-    tc.axis = axis; tc.dir = dir; tc.road = road;
-    if (axis === 'z') { tc.car.x = road + (dir > 0 ? -LANE : LANE); tc.car.z = along; }
-    else { tc.car.x = along; tc.car.z = road + (dir > 0 ? LANE : -LANE); }
-    tc.car.heading = headingFrom(axis, dir);
-    tc.car.speed = 0;
-    tc.car.group.position.set(tc.car.x, 0, tc.car.z);
-    tc.car.group.rotation.y = tc.car.heading;
-    tc.lastTurnAt = null;
-  }
-
-  spawnCar(anywhere) {
-    const key = this.keys[Math.floor(this.rng() * this.keys.length)];
-    const color = TRAFFIC_COLORS[Math.floor(this.rng() * TRAFFIC_COLORS.length)];
-    const car = new Vehicle(this.scene, key, 0, 0, 0, color);
-    car.traffic = true;
-    const tc = { car, axis: 'z', dir: 1, road: 0, speed: 0, targetSpeed: 9 + this.rng() * 5, disabled: false, lastTurnAt: null, turnCooldown: 0 };
-    this.placeOnRoad(tc);
-    this.cars.push(tc);
-    return tc;
-  }
-
-  // A car ahead in the same lane within `dist` metres (or null).
-  carAhead(tc, dist) {
-    let best = null, bd = dist;
-    for (const o of this.cars) {
-      if (o === tc || o.axis !== tc.axis || o.road !== tc.road || o.dir !== tc.dir) continue;
-      const d = tc.axis === 'z' ? (o.car.z - tc.car.z) * tc.dir : (o.car.x - tc.car.x) * tc.dir;
-      if (d > 0 && d < bd) { bd = d; best = o; }
-    }
-    return best;
-  }
-
-  // Try to turn at an intersection. `along` is the moving coordinate.
-  maybeTurn(tc, along) {
-    if (tc.turnCooldown > 0) return;
-    const nearest = Math.round(along / PITCH) * PITCH;
-    if (Math.abs(along - nearest) > 3) return;
-    if (tc.lastTurnAt === nearest && tc.axis === tc.lastAxis) return;
-    tc.lastTurnAt = nearest; tc.lastAxis = tc.axis;
-    if (this.rng() > 0.3) return; // 70% go straight
-    tc.turnCooldown = 2.0; // don't roll again at the same corner
-    const left = this.rng() < 0.5;
-    // Turn onto the cross road: the cross road's line is `nearest`.
-    const newAxis = tc.axis === 'z' ? 'x' : 'z';
-    let newDir;
-    if (tc.axis === 'z') newDir = (tc.dir > 0) === left ? 1 : -1; // facing +z: left is +x
-    else newDir = (tc.dir > 0) === left ? -1 : 1; // facing +x: left is -z
-    // Snap onto the new lane.
-    if (newAxis === 'x') { tc.car.z = nearest + (newDir > 0 ? LANE : -LANE); }
-    else { tc.car.x = nearest + (newDir > 0 ? -LANE : LANE); }
-    tc.axis = newAxis; tc.dir = newDir; tc.road = nearest;
-    tc.car.heading = headingFrom(newAxis, newDir);
-    tc.car.group.rotation.y = tc.car.heading;
-  }
-
-  update(dt, ctx) {
-    const px = ctx.px, pz = ctx.pz;
-    const driven = ctx.drivenCar || null;
-    for (const tc of this.cars) {
-      const car = tc.car;
-      if (tc.disabled) continue;
-      if (tc.turnCooldown > 0) tc.turnCooldown -= dt;
-      // Respawn far-away cars near the player so the streets stay alive.
-      const dPlayer = Math.hypot(car.x - px, car.z - pz);
-      if (dPlayer > 220) { this.placeOnRoad(tc); continue; }
-      // Turn at intersections.
-      const along = tc.axis === 'z' ? car.z : car.x;
-      this.maybeTurn(tc, along);
-      // Car-following: slow/stop for a car ahead, or for the player's car.
-      let target = tc.targetSpeed;
-      const ahead = this.carAhead(tc, 12);
-      if (ahead) {
-        const gap = tc.axis === 'z' ? Math.abs(ahead.car.z - car.z) : Math.abs(ahead.car.x - car.x);
-        if (gap < 6) target = 0;
-        else if (gap < 12) target = Math.min(target, ahead.car.speed * 0.9);
+    // Spawn the circulating fleet: 14 cars on random streets, in lanes.
+    spawnFleet() {
+      for (let i = 0; i < TRAFFIC_COUNT; i++) {
+        const spec = TRAFFIC_MODELS[i % TRAFFIC_MODELS.length];
+        const car = buildCar(G, { color: spec.color, model: spec.model, spoiler: spec.spoiler });
+        // Pick a street and a lane offset (right-hand driving).
+        const horizontal = rng() < 0.5;
+        const street = Math.floor(rng() * 9 - 4) * 52;
+        const along = (rng() * 2 - 1) * 240;
+        const lane = (rng() < 0.5 ? 1 : -1) * 3.5;
+        if (horizontal) {
+          car.x = along;
+          car.z = street + lane;
+          car.heading = lane > 0 ? Math.PI / 2 : -Math.PI / 2;
+        } else {
+          car.x = street + lane;
+          car.z = along;
+          car.heading = lane > 0 ? 0 : Math.PI;
+        }
+        car.speed = 8 + rng() * 7;
+        car.sync();
+        G.scene.add(car.group);
+        car.userData = { cruise: car.speed, turnAt: null };
+        this.cars.push(car);
       }
-      if (driven) {
-        const dx = driven.x - car.x, dz = driven.z - car.z;
-        const dist = Math.hypot(dx, dz);
-        if (dist < 8) {
-          // Is the player car ahead of us (in our driving direction)?
-          const fx = Math.sin(car.heading), fz = Math.cos(car.heading);
-          const dot = (dx * fx + dz * fz) / Math.max(dist, 0.01);
-          if (dot > 0.5 && dist < 7) target = 0;
+      G.trafficCars = this.cars;
+    },
+
+    // Parked cars at the kerb, for stealing. One sits near the start so
+    // the first steal is a short walk.
+    spawnParked() {
+      const spots = [
+        [10, 4, 0], [-12, -30, Math.PI], [12, 60, 0], [-10, 104, Math.PI],
+        [10, -60, 0], [-12, 156, Math.PI], [12, -104, 0], [-10, -156, Math.PI],
+        [10, 208, 0], [-12, -208, Math.PI], [62, 10, Math.PI / 2], [-62, -12, -Math.PI / 2],
+      ];
+      for (const [x, z, heading] of spots) {
+        const spec = TRAFFIC_MODELS[Math.floor(rng() * TRAFFIC_MODELS.length)];
+        const car = buildCar(G, { color: spec.color, model: spec.model, spoiler: spec.spoiler });
+        car.x = x;
+        car.z = z;
+        car.heading = heading;
+        car.speed = 0;
+        car.sync();
+        G.scene.add(car.group);
+        this.parked.push(car);
+      }
+      G.parkedCars = this.parked;
+    },
+
+    // The taxi: a yellow cab that the taxi job uses. It circulates until
+    // Dante takes it, then it becomes the fare car.
+    spawnTaxi() {
+      const cab = buildCar(G, { color: CAR_COLORS.yellow, model: 'Taxi', taxi: true, spoiler: false });
+      cab.x = 62;
+      cab.z = -60;
+      cab.heading = Math.PI / 2;
+      cab.speed = 9;
+      cab.sync();
+      G.scene.add(cab.group);
+      cab.userData = { cruise: 9 };
+      this.taxi = cab;
+      G.taxiCar = cab;
+      return cab;
+    },
+
+    // Place the five staged cars for the cover shot. They are separate,
+    // on the main street ahead of the Comet, and never move.
+    stageCoverCars() {
+      for (const [x, z] of PARK_SPOTS) {
+        const spec = TRAFFIC_MODELS[Math.floor(rng() * TRAFFIC_MODELS.length)];
+        const car = buildCar(G, { color: spec.color, model: spec.model, spoiler: spec.spoiler, staged: true });
+        car.x = x;
+        car.z = z;
+        car.heading = 0;
+        car.speed = 0;
+        car.staged = true;
+        car.sync();
+        G.scene.add(car.group);
+        this.staged.push(car);
+      }
+      return this.staged;
+    },
+
+    // The nearest parked car to a point (what the steal prompt reads).
+    nearestParked(x, z) {
+      let best = null;
+      let bestD = Infinity;
+      for (const car of this.parked) {
+        const d = Math.hypot(car.x - x, car.z - z);
+        if (d < bestD) {
+          bestD = d;
+          best = car;
         }
       }
-      // Throttle toward the target speed.
-      let throttle = 0;
-      if (car.speed < target - 0.5) throttle = 0.8;
-      else if (car.speed > target + 0.5) throttle = -0.9;
-      car.update(dt, { throttle, steer: 0, handbrake: false }, this.city);
-      // Keep the lane offset exact (the physics only moves forward).
-      if (tc.axis === 'z') car.x = tc.road + (tc.dir > 0 ? -LANE : LANE);
-      else car.z = tc.road + (tc.dir > 0 ? LANE : -LANE);
-      car.group.position.set(car.x, 0, car.z);
-      // Wrap at the city edge instead of driving into the sea/desert.
-      if (Math.abs(car.x) > 285 || Math.abs(car.z) > 285) this.placeOnRoad(tc);
-    }
-  }
+      return best ? { car: best, dist: bestD } : null;
+    },
 
-  // Shooting a traffic car disables it (driver bails). Returns the car or null.
-  damageCar(car, amount) {
-    const tc = this.cars.find((t) => t.car === car);
-    if (!tc || tc.disabled) return null;
-    tc.disabled = true;
-    tc.car.speed = 0;
-    return car;
-  }
+    // One fixed step: traffic drives its lane, slows for the car ahead,
+    // and turns at intersections. Staged cars are skipped entirely.
+    update(dt) {
+      for (const car of this.cars) {
+        if (car.staged) continue;
+        // Slow for the car ahead in the same lane.
+        let ahead = Infinity;
+        for (const other of this.cars) {
+          if (other === car) continue;
+          const dx = other.x - car.x;
+          const dz = other.z - car.z;
+          const fwd = Math.sin(car.heading) * dx + Math.cos(car.heading) * dz;
+          const lat = Math.cos(car.heading) * dx - Math.sin(car.heading) * dz;
+          if (fwd > 0 && fwd < 14 && Math.abs(lat) < 3) ahead = Math.min(ahead, fwd);
+        }
+        const playerCar = G.player.car;
+        if (playerCar && playerCar !== car) {
+          const dx = playerCar.x - car.x;
+          const dz = playerCar.z - car.z;
+          const fwd = Math.sin(car.heading) * dx + Math.cos(car.heading) * dz;
+          const lat = Math.cos(car.heading) * dx - Math.sin(car.heading) * dz;
+          if (fwd > 0 && fwd < 14 && Math.abs(lat) < 3) ahead = Math.min(ahead, fwd);
+        }
+        const target = ahead < 12 ? Math.max(0, (ahead - 5) * 0.8) : car.userData.cruise;
+        car.speed += Math.max(-8 * dt, Math.min(6 * dt, target - car.speed));
+        car.x += Math.sin(car.heading) * car.speed * dt;
+        car.z += Math.cos(car.heading) * car.speed * dt;
+        // Turn at intersections: when crossing a street line, sometimes
+        // take the turn (left or right) instead of going straight.
+        const nearX = Math.round(car.x / 52) * 52;
+        const nearZ = Math.round(car.z / 52) * 52;
+        const onIntersection = Math.abs(car.x - nearX) < 2.5 && Math.abs(car.z - nearZ) < 2.5;
+        if (onIntersection && !car.userData.turnAt) {
+          car.userData.turnAt = car.heading;
+          if (rng() < 0.45) {
+            car.heading += (rng() < 0.5 ? 1 : -1) * Math.PI / 2;
+          }
+        } else if (!onIntersection) {
+          car.userData.turnAt = null;
+        }
+        // Wrap around the city edge so the fleet never thins out.
+        if (car.x > 270) car.x = -270;
+        if (car.x < -270) car.x = 270;
+        if (car.z > 270) car.z = -270;
+        if (car.z < -270) car.z = 270;
+        car.sync();
+        car.spin(dt);
+      }
+      // The taxi circulates like traffic until Dante takes it.
+      if (this.taxi && G.taxiState === 'idle' && !G.player.inCar) {
+        const cab = this.taxi;
+        cab.x += Math.sin(cab.heading) * cab.speed * dt;
+        cab.z += Math.cos(cab.heading) * cab.speed * dt;
+        if (Math.abs(cab.x) > 260 || Math.abs(cab.z) > 260) cab.heading += Math.PI / 2;
+        cab.sync();
+        cab.spin(dt);
+      }
+    },
+  };
 
-  nearestTrafficCar(x, z, maxDist) {
-    let best = null, bd = maxDist;
-    for (const tc of this.cars) {
-      if (tc.disabled) continue;
-      const d = Math.hypot(tc.car.x - x, tc.car.z - z);
-      if (d < bd) { bd = d; best = tc.car; }
-    }
-    return best;
-  }
-
-  get count() { return this.cars.filter((t) => !t.disabled).length; }
+  return traffic;
 }

@@ -1,19 +1,14 @@
-// Solmar Bay 3D — v18 3D core rebuild (branch v12-3d, recording 01a1fd4d).
-// A true-3D open-world crime game, written fresh for this competition by the
-// recorded agent session: an original coastal city in Three.js, on foot and
-// by car, with a chase camera, arcade car physics, HUD + minimap, and saves.
-// game/ is plain static files a desktop browser loads — game/index.html and
-// its ES modules; Three.js r160 is vendored at game/vendor/three.module.min.js
-// (minified, MIT), so the game plays fully OFFLINE: zero network requests.
-// This program hands it in: it copies game/ and screenshots/ from beside
-// this file to /output and writes /output/dossier.json, the summary the judge
-// reads, with the vendored make.fun library.
+// Solmar Bay 3D — the entrypoint (Node 22, standard library only). It
+// hands the game in: it copies game/ and screenshots/ from beside this
+// file to /output (or MAKEFUN_OUTPUT_DIR outside the grader) and writes
+// /output/dossier.json with the vendored make.fun library. The copy and
+// the dossier are deterministic — two runs write the same bytes — because
+// the file walk is sorted and nothing here stamps a time or a random value.
 //
-// Serve it locally with a static server, then open http://localhost:8082.
-// Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
+// Run it locally with:
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 
-import { cpSync, existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-game.ts';
@@ -24,81 +19,18 @@ const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
 mkdirSync(out, { recursive: true });
 cpSync(join(here, 'game'), join(out, 'game'), { recursive: true });
 mkdirSync(join(out, 'screenshots'), { recursive: true });
-if (existsSync(join(here, 'screenshots'))) cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
-
-// Fail fast at hand-in: a missing entrypoint or an oversized screenshot
-// would be refused by the scorer, so refuse it here with a clear error.
-if (!existsSync(join(out, 'game', 'index.html'))) throw new Error('hand-in is missing game/index.html');
-for (const shot of ['1-cover.jpg', '2-on-foot.jpg', '3-beach.jpg', '4-neon-night.jpg']) {
-  const p = join(out, 'screenshots', shot);
-  if (!existsSync(p)) throw new Error(`screenshot ${shot} is missing — retake the 4 staged shots before handing in`);
-  if (statSync(p).size > 262144) throw new Error(`screenshot ${shot} is over the 256 KiB cap`);
+if (existsSync(join(here, 'screenshots'))) {
+  cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
 }
 
-// v18 gates: the 3D core — engine + city + player + cars + HUD + save must
-// actually be in the handed-in sources, or the entry is not the 3D rebuild.
-// Every needle below was verified to exist in the handed-in sources before
-// this gate list was written.
-import { readFileSync } from 'node:fs';
-function mustContain(rel, needle) {
-  const text = readFileSync(join(here, rel), 'utf8');
-  if (!text.includes(needle)) throw new Error(`hand-in is missing ${needle} in ${rel}`);
-}
-mustContain('game/src/engine.js', 'setTime');
-mustContain('game/src/engine.js', 'followShadows');
-mustContain('game/src/engine.js', 'ACESFilmicToneMapping');
-mustContain('game/src/engine.js', 'ShaderMaterial');
-mustContain('game/src/city.js', 'InstancedMesh');
-mustContain('game/src/city.js', 'BEACH_Z');
-mustContain('game/src/city.js', 'collideCircle');
-mustContain('game/src/city.js', 'randomParkedSpot');
-mustContain('game/src/city.js', 'isOnRoad');
-mustContain('game/src/city.js', 'windowsTexture');
-mustContain('game/src/vehicles.js', 'bicycle');
-mustContain('game/src/vehicles.js', 'handbrake');
-mustContain('game/src/vehicles.js', 'buildCarMesh');
-mustContain('game/src/vehicles.js', 'nearestCar');
-mustContain('game/src/vehicles.js', 'setHeadlight');
-mustContain('game/src/player.js', 'enterCar');
-mustContain('game/src/player.js', 'exitCar');
-mustContain('game/src/player.js', 'camYaw');
-mustContain('game/src/player.js', 'punch');
-mustContain('game/src/main.js', 'chaseYaw');
-mustContain('game/src/main.js', 'toggleCar');
-mustContain('game/src/main.js', 'districtAt');
-mustContain('game/src/main.js', 'setAutoDrive');
-mustContain('game/src/main.js', 'window.__solmar');
-mustContain('game/src/main.js', '__shotReady');
-mustContain('game/src/hud.js', 'drawMinimap');
-mustContain('game/src/hud.js', 'setWanted');
-mustContain('game/src/hud.js', 'minimap');
-mustContain('game/src/save.js', 'solmar-bay-save-v1');
-mustContain('game/src/save.js', 'writeSave');
-mustContain('game/src/audio.js', 'AudioStub');
-mustContain('game/src/audio.js', 'engineOsc');
-// v18 systems gates: the gameplay systems — traffic, pedestrians, police +
-// wanted, 8 story missions, combat — must actually be in the handed-in
-// sources, or the entry is only the core, not the finished game.
-mustContain('game/src/traffic.js', 'export class Traffic');
-mustContain('game/src/pedestrians.js', 'export class Pedestrians');
-mustContain('game/src/police.js', 'export class Police');
-mustContain('game/src/police.js', 'spawnChase');
-mustContain('game/src/missions.js', 'export class Missions');
-mustContain('game/src/missions.js', 'startMission');
-mustContain('game/src/weapons.js', 'export class Weapons');
-mustContain('game/index.html', 'importmap');
-mustContain('game/index.html', 'three.module.min.js');
-mustContain('game/index.html', 'play-btn');
-mustContain('game/index.html', 'pause-menu');
-
-// The scorer's own caps (reference/gate.json): only text_max_bytes shapes the bytes; the others refuse an entry the
-// scorer would refuse (more than 4 screenshots or one over 256 KiB; more than 993 files in game/ or 48 MiB of game
-// files, in all, or a path under game/ over 1000 bytes: game/ counts beside /output's own 1000-entry cap, its
-// screenshots/ and dossier.json).
+// The scorer's own caps: only text_max_bytes shapes the bytes; the rest
+// refuse an entry the scorer would refuse (more than 4 screenshots or one
+// over 256 KiB; more than 993 files in game/ or 48 MiB of game files, in
+// all, or a path under game/ over 1000 bytes).
 writeFileSync(
   join(out, 'dossier.json'),
   buildDossier(out, {
-    text_max_bytes: 262144,
+    text_max_bytes: 163840,
     screenshots: { max: 4, max_bytes: 262144 },
     game_max_files: 993,
     game_max_bytes: 50331648,

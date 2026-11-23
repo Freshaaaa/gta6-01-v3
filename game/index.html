@@ -4,101 +4,154 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="data:,">
-<title>Solmar Bay — 3D open-world crime game</title>
+<title>Solmar Bay 3D — an open-world crime game</title>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { width: 100%; height: 100%; overflow: hidden; background: #1a1218; font-family: 'Segoe UI', Arial, sans-serif; }
-  #game { display: block; width: 100vw; height: 100vh; }
-  .panel { position: absolute; color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.8); pointer-events: none; z-index: 5; }
-  #hud-top-left { top: 14px; left: 16px; }
-  #money { font-size: 26px; font-weight: 800; color: #7dff9a; }
-  #stars { font-size: 20px; letter-spacing: 3px; color: #ffd23e; margin-top: 2px; }
-  #stars.hot { color: #ff4040; }
-  #location { font-size: 13px; opacity: .85; margin-top: 4px; letter-spacing: 1px; text-transform: uppercase; }
-  #objective { top: 14px; left: 50%; transform: translateX(-50%); font-size: 15px; font-weight: 600;
-    background: rgba(0,0,0,.45); padding: 8px 16px; border-radius: 6px; white-space: nowrap; }
-  #hud-top-right { top: 14px; right: 16px; text-align: right; }
-  #clock { font-size: 22px; font-weight: 700; }
-  #minimap { display: block; margin-top: 6px; border: 2px solid rgba(255,255,255,.35); border-radius: 50%;
-    background: #101018; box-shadow: 0 2px 10px rgba(0,0,0,.5); }
-  #hud-bottom-left { bottom: 16px; left: 16px; }
-  #health-bar { width: 180px; height: 12px; background: rgba(0,0,0,.55); border-radius: 6px; overflow: hidden; }
-  #health-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #37e07a, #7dff9a); }
-  #weapon { margin-top: 6px; font-size: 14px; font-weight: 600; }
-  #hud-bottom-right { bottom: 16px; right: 16px; text-align: right; }
-  #speed { font-size: 34px; font-weight: 800; line-height: 1; }
-  #speed-unit { font-size: 13px; opacity: .8; }
-  #gear-line { font-size: 14px; margin-top: 2px; }
-  #car-name { font-size: 15px; font-weight: 700; color: #ffd23e; }
-  #prompt { top: 58%; left: 50%; transform: translateX(-50%); font-size: 17px; font-weight: 700;
-    background: rgba(0,0,0,.55); padding: 9px 18px; border-radius: 6px; display: none; }
-  .overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
-    background: linear-gradient(160deg, rgba(40,10,40,.82), rgba(10,10,30,.88)); color: #fff; z-index: 10; text-align: center; }
-  .overlay h1 { font-size: 64px; letter-spacing: 8px; font-weight: 900;
-    background: linear-gradient(180deg, #ffe9a8, #ff7e5f 55%, #ff2a7a); -webkit-background-clip: text; background-clip: text; color: transparent; }
-  .overlay h2 { font-size: 15px; letter-spacing: 5px; opacity: .8; margin: 6px 0 26px; }
-  .overlay button { pointer-events: auto; cursor: pointer; font-size: 19px; font-weight: 700; color: #1a1218;
-    background: #ffd23e; border: none; border-radius: 8px; padding: 13px 34px; margin-bottom: 26px; }
-  .overlay button:hover { background: #ffe27a; }
-  .controls { font-size: 14px; line-height: 1.9; opacity: .92; background: rgba(0,0,0,.35); padding: 14px 26px; border-radius: 10px; }
-  .controls b { color: #ffd23e; }
-  #pause-menu { display: none; }
-  #pause-menu h1 { font-size: 44px; }
+  #game-canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; color: #fff; }
+  .panel { background: rgba(12, 14, 20, 0.62); border: 1px solid rgba(255,255,255,0.16); border-radius: 8px; padding: 8px 12px; backdrop-filter: blur(2px); }
+  #hud-top-left { position: absolute; top: 12px; left: 12px; min-width: 190px; }
+  #money { font-size: 26px; font-weight: 800; color: #7ee787; letter-spacing: 0.5px; }
+  #stars { font-size: 20px; letter-spacing: 3px; color: #ffd75e; margin: 2px 0; }
+  #district { font-size: 13px; letter-spacing: 3px; color: #ffd75e; font-weight: 700; }
+  #hud-top-center { position: absolute; top: 12px; left: 50%; transform: translateX(-50%); text-align: center; min-width: 430px; }
+  #mission-banner { font-size: 16px; font-weight: 800; letter-spacing: 0.5px; color: #fff; }
+  #stage { font-size: 12px; letter-spacing: 2px; color: #9ecbff; margin-top: 2px; }
+  #objective { font-size: 13px; color: #ffd75e; margin-top: 2px; }
+  #mission-timer { font-size: 13px; color: #fff; opacity: 0.85; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  #hud-top-right { position: absolute; top: 12px; right: 12px; text-align: right; }
+  #clock { font-size: 20px; font-weight: 700; margin-bottom: 6px; text-shadow: 0 1px 4px #000; }
+  #minimap { width: 200px; height: 200px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.35); background: #101418; display: block; }
+  #hud-bottom-left { position: absolute; bottom: 12px; left: 12px; width: 250px; }
+  #health-row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  #health-bar { flex: 1; height: 14px; background: rgba(255,255,255,0.18); border-radius: 7px; overflow: hidden; }
+  #health-fill { height: 100%; width: 100%; background: #58c96a; border-radius: 7px; transition: width 0.2s; }
+  #health-text { font-size: 13px; font-weight: 700; min-width: 28px; text-align: right; }
+  #crew-row { display: flex; gap: 6px; }
+  .crew-box { flex: 1; background: rgba(255,255,255,0.10); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; padding: 5px 4px; text-align: center; }
+  .crew-box.cooling { opacity: 0.55; }
+  .crew-name { font-size: 11px; font-weight: 800; letter-spacing: 1px; }
+  .crew-key { font-size: 10px; color: #9ecbff; }
+  .crew-state { font-size: 11px; font-weight: 700; color: #7ee787; }
+  #hud-bottom-center { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); text-align: center; }
+  #weapon-slots { display: flex; gap: 6px; }
+  .weapon-slot { width: 74px; background: rgba(12,14,20,0.62); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; padding: 6px 4px; text-align: center; }
+  .weapon-slot.active { border-color: #ffd75e; box-shadow: 0 0 0 1px #ffd75e; }
+  .weapon-slot.locked { opacity: 0.55; }
+  .w-key { font-size: 10px; color: #9ecbff; }
+  .w-name { font-size: 12px; font-weight: 800; }
+  .w-sub { font-size: 10px; color: #ccc; }
+  #weapon-current { font-size: 12px; margin-top: 5px; color: #ffd75e; font-weight: 700; }
+  #hud-bottom-right { position: absolute; bottom: 12px; right: 12px; text-align: right; }
+  #speed { font-size: 44px; font-weight: 800; line-height: 0.95; text-shadow: 0 2px 6px #000; font-variant-numeric: tabular-nums; }
+  #speed-unit { font-size: 14px; color: #ccc; }
+  #car-name { font-size: 15px; font-weight: 700; }
+  #gear { font-size: 13px; color: #9ecbff; font-weight: 700; }
+  #dialogue { position: absolute; left: 50%; transform: translateX(-50%); bottom: 150px; max-width: 560px; background: rgba(12,14,20,0.72); border: 1px solid rgba(255,255,255,0.2); border-left: 4px solid #ffd75e; border-radius: 8px; padding: 10px 16px; display: none; }
+  #dialogue-text { font-size: 15px; line-height: 1.45; color: #fff; }
+  #prompt { position: absolute; left: 50%; top: 56%; transform: translate(-50%, -50%); background: rgba(12,14,20,0.8); border: 1px solid #ffd75e; border-radius: 8px; padding: 10px 18px; font-size: 16px; font-weight: 700; color: #ffd75e; display: none; }
+  #flash-message { position: absolute; top: 132px; left: 50%; transform: translateX(-50%); background: rgba(12,14,20,0.8); border: 1px solid rgba(255,255,255,0.25); border-radius: 8px; padding: 8px 16px; font-size: 14px; font-weight: 700; opacity: 0; transition: opacity 0.3s; }
+  #wasted, #busted { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column; z-index: 20; background: rgba(20, 4, 4, 0.72); }
+  #wasted h1, #busted h1 { font-size: 64px; letter-spacing: 10px; color: #ff5040; text-shadow: 0 4px 20px #000; }
+  #wasted p, #busted p { font-size: 18px; color: #fff; margin-top: 10px; }
+  #title-screen { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; z-index: 30; background: linear-gradient(180deg, rgba(20,8,20,0.55), rgba(20,8,20,0.78)); }
+  #menu { display: flex; flex-direction: column; align-items: center; gap: 14px; width: 520px; padding: 30px; }
+  #menu h1 { font-size: 64px; letter-spacing: 8px; color: #ffd75e; text-shadow: 0 4px 24px rgba(0,0,0,0.8); }
+  #menu .subtitle { font-size: 15px; letter-spacing: 4px; color: #fff; opacity: 0.85; margin-top: -8px; }
+  .menu-btn { pointer-events: auto; cursor: pointer; width: 320px; padding: 12px; font-size: 17px; font-weight: 700; color: #fff; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.35); border-radius: 8px; }
+  .menu-btn:hover { background: rgba(255,215,94,0.25); border-color: #ffd75e; }
+  .menu-btn.primary { background: #c23b2e; border-color: #ff6a55; }
+  .menu-btn.primary:hover { background: #d84a38; }
+  #save-slots { display: flex; flex-direction: column; gap: 6px; width: 320px; }
+  .save-slot { pointer-events: auto; cursor: pointer; padding: 8px 12px; font-size: 13px; color: #ddd; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.18); border-radius: 6px; }
+  .save-slot.empty { color: #888; }
+  #map-screen { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; gap: 24px; z-index: 25; background: rgba(8, 10, 14, 0.82); }
+  #bigmap { width: 480px; height: 480px; border: 2px solid rgba(255,255,255,0.3); border-radius: 8px; background: #0e1216; }
+  #map-stats { width: 260px; color: #fff; }
+  #map-stats h2 { font-size: 24px; letter-spacing: 3px; color: #ffd75e; margin-bottom: 12px; }
+  #map-stats p { font-size: 14px; margin: 6px 0; color: #ddd; }
+  #map-close-btn { pointer-events: auto; cursor: pointer; margin-top: 16px; padding: 10px 20px; font-size: 15px; font-weight: 700; color: #fff; background: #c23b2e; border: 1px solid #ff6a55; border-radius: 8px; }
 </style>
 <script type="importmap">
 { "imports": { "three": "./vendor/three.module.min.js" } }
 </script>
 </head>
 <body>
-<canvas id="game"></canvas>
-
-<div class="panel" id="hud-top-left">
-  <div id="money">$250</div>
-  <div id="stars">☆☆☆☆☆</div>
-  <div id="location">Downtown</div>
+<canvas id="game-canvas"></canvas>
+<div id="hud">
+  <div id="hud-top-left" class="panel">
+    <div id="money">$100</div>
+    <div id="stars">☆☆☆☆☆</div>
+    <div id="district">DOWNTOWN</div>
+  </div>
+  <div id="hud-top-center" class="panel">
+    <div id="mission-banner">WELCOME TO SOLMAR</div>
+    <div id="stage">STAGE 1/8</div>
+    <div id="objective">NEXT: Go to the safehouse</div>
+    <div id="mission-timer">05:00</div>
+  </div>
+  <div id="hud-top-right">
+    <div id="clock">17:30</div>
+    <canvas id="minimap" width="200" height="200"></canvas>
+  </div>
+  <div id="hud-bottom-left" class="panel">
+    <div id="health-row">
+      <div id="health-bar"><div id="health-fill"></div></div>
+      <div id="health-text">100</div>
+    </div>
+    <div id="crew-row">
+      <div class="crew-box" id="crew-mara"><div class="crew-name">MARA</div><div class="crew-key">[Z] Medic</div><div class="crew-state">READY</div></div>
+      <div class="crew-box" id="crew-rico"><div class="crew-name">RICO</div><div class="crew-key">[X] Ram</div><div class="crew-state">READY</div></div>
+      <div class="crew-box" id="crew-lena"><div class="crew-name">LENA</div><div class="crew-key">[C] Ghost</div><div class="crew-state">READY</div></div>
+    </div>
+  </div>
+  <div id="hud-bottom-center">
+    <div id="weapon-slots">
+      <div class="weapon-slot active" id="slot-1"><div class="w-key">[1]</div><div class="w-name">Fists</div><div class="w-sub">—</div></div>
+      <div class="weapon-slot" id="slot-2"><div class="w-key">[2]</div><div class="w-name">Pistol</div><div class="w-sub">12/48</div></div>
+      <div class="weapon-slot" id="slot-3"><div class="w-key">[3]</div><div class="w-name">SMG</div><div class="w-sub">30/120</div></div>
+      <div class="weapon-slot locked" id="slot-4"><div class="w-key">[4]</div><div class="w-name">GATOR</div><div class="w-sub">LOCKED $1,900</div></div>
+      <div class="weapon-slot locked" id="slot-5"><div class="w-key">[5]</div><div class="w-name">RPG</div><div class="w-sub">LOCKED $9,000</div></div>
+    </div>
+    <div id="weapon-current">Fists</div>
+  </div>
+  <div id="hud-bottom-right" class="panel">
+    <div><span id="speed">0</span> <span id="speed-unit">km/h</span></div>
+    <div id="car-name">On foot</div>
+    <div id="gear">—</div>
+  </div>
+  <div id="dialogue"><div id="dialogue-text"></div></div>
+  <div id="prompt"></div>
+  <div id="flash-message"></div>
 </div>
-<div class="panel" id="objective">Explore Solmar Bay — find a car and press E</div>
-<div class="panel" id="hud-top-right">
-  <div id="clock">17:30</div>
-  <canvas id="minimap" width="200" height="200"></canvas>
-</div>
-<div class="panel" id="hud-bottom-left">
-  <div id="health-bar"><div id="health-fill"></div></div>
-  <div id="weapon">Fists</div>
-</div>
-<div class="panel" id="hud-bottom-right">
-  <div id="car-name">On foot</div>
-  <div><span id="speed">0</span> <span id="speed-unit">km/h</span></div>
-  <div id="gear-line">Gear <span id="gear">—</span></div>
-</div>
-<div class="panel" id="prompt"></div>
-
-<div class="overlay" id="menu">
-  <h1>SOLMAR BAY</h1>
-  <h2>A 3D OPEN-WORLD CRIME GAME</h2>
-  <button id="play-btn">Click to play</button>
-  <div class="controls">
-    <b>WASD</b> walk / drive &nbsp;·&nbsp; <b>Shift</b> sprint &nbsp;·&nbsp; <b>Space</b> jump / handbrake<br>
-    <b>E</b> steal / exit car &nbsp;·&nbsp; <b>F</b> punch &nbsp;·&nbsp; <b>Click</b> shoot &nbsp;·&nbsp; <b>1/2/3</b> weapons<br>
-    <b>R</b> reload &nbsp;·&nbsp; <b>Q</b> radio &nbsp;·&nbsp; <b>Drag mouse</b> look around<br>
-    <b>Esc</b> pause &nbsp;·&nbsp; <b>M</b> mute &nbsp;·&nbsp; Drive a <b>Cab</b> for taxi fares
+<div id="wasted"><h1>WASTED</h1><p>The city takes its cut. Respawning at the safehouse…</p></div>
+<div id="busted"><h1>BUSTED</h1><p>The BBPD has you. Respawning at the safehouse…</p></div>
+<div id="title-screen">
+  <div id="menu">
+    <h1>SOLMAR BAY</h1>
+    <div class="subtitle">AN OPEN-WORLD CRIME GAME</div>
+    <button class="menu-btn primary" id="play-btn">▶ Continue</button>
+    <button class="menu-btn" id="new-game-btn">New Game</button>
+    <button class="menu-btn" id="options-btn">Options</button>
+    <div id="save-slots">
+      <div class="save-slot empty" id="save-slot-1">SLOT 1 — Empty slot</div>
+      <div class="save-slot empty" id="save-slot-2">SLOT 2 — Empty slot</div>
+      <div class="save-slot empty" id="save-slot-3">SLOT 3 — Empty slot</div>
+    </div>
   </div>
 </div>
-<div class="overlay" id="pause-menu">
-  <h1>PAUSED</h1>
-  <h2>SOLMAR BAY</h2>
-  <button id="resume-btn">Resume</button>
-  <button id="restart-btn">Restart at Downtown</button>
+<div id="map-screen">
+  <canvas id="bigmap" width="480" height="480"></canvas>
+  <div id="map-stats">
+    <h2>SOLMAR BAY</h2>
+    <p>Districts: Marina · Downtown · Northside · West End · East Side</p>
+    <p>Press N or Close to return to the streets.</p>
+    <p>Crew: Mara (medic), Rico (ram), Lena (ghost).</p>
+    <p>Locked hardware: GATOR $1,900 · RPG $9,000.</p>
+    <button id="map-close-btn">Close [N]</button>
+  </div>
 </div>
-<div class="overlay" id="busted" style="display:none">
-  <h1>BUSTED</h1>
-  <h2>THE COPS GOT YOU — $200 BAIL</h2>
-</div>
-<div class="overlay" id="wasted" style="display:none">
-  <h1>WASTED</h1>
-  <h2>DANTE IS DOWN — $100 HOSPITAL BILL</h2>
-</div>
-
 <script type="module" src="./src/main.js"></script>
 </body>
 </html>
