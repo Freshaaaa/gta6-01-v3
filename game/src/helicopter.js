@@ -1,168 +1,126 @@
-// Solmar Bay 3D — helicopter: the BBPD police helicopter. It appears at
-// wanted 3+, circling the player, and it stars in the cover shot: hovering
-// low (~12 m) so the body, tail, main rotor and tail rotor all read, in
-// police white with a blue cheatline and a red beacon. Its SpotLight cone
-// is STAGED-ONLY — it turns on only during staged shots (stageAt()), and
-// stays OFF in normal gameplay, because a live shadow-casting spotlight
-// halves the sim rate under SwiftShader.
-import * as THREE from 'three';
+// Solmar Bay 3D — the BBPD police helicopter (v5, from the brief).
+// The heli only appears at wanted ≥ 3. It orbits the player at ~48 m
+// ahead and ~12 m up. The searchlight cone is STAGED-ONLY: it renders
+// only in ?shot=chase (the cover shot), never in normal play — the v4
+// lesson (a spotlight that follows the player ruined night shots).
 
-export function createHelicopter(G) {
-  const group = new THREE.Group();
-  const white = new THREE.MeshLambertMaterial({ color: 0xe9edf2 });
-  const blue = new THREE.MeshLambertMaterial({ color: 0x1e5fd6 });
-  const glass = new THREE.MeshLambertMaterial({
-    color: 0x8ab0cc, emissive: 0x3a5a7a, emissiveIntensity: 0.7,
-  });
-  const bladeMat = new THREE.MeshLambertMaterial({ color: 0xb8bec6 });
-  const dark = new THREE.MeshLambertMaterial({ color: 0x2a2a2e });
+import * as THREE from '../vendor/three.module.min.js';
+import { HELI } from './config.js';
+import { headingToDir, clamp } from './util.js';
 
-  // Body: a rounded cabin (box + nose), police white.
-  const body = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.7, 4.2), white);
-  body.castShadow = !G.lowfx;
-  group.add(body);
-  const nose = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.2, 1.2), white);
-  nose.position.set(0, -0.1, 2.5);
-  group.add(nose);
-  // Blue cheatline along the body.
-  const cheat = new THREE.Mesh(new THREE.BoxGeometry(2.65, 0.35, 4.0), blue);
-  cheat.position.y = -0.15;
-  group.add(cheat);
-  // Cockpit glass: the dark blue windshield up front.
-  const cockpit = new THREE.Mesh(new THREE.BoxGeometry(2.3, 1.0, 0.9), glass);
-  cockpit.position.set(0, 0.35, 2.0);
-  group.add(cockpit);
-  // Tail boom + tail fin.
-  const tail = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 4.6), white);
-  tail.position.set(0, 0.2, -4.2);
-  group.add(tail);
-  const fin = new THREE.Mesh(new THREE.BoxGeometry(0.18, 1.6, 1.0), blue);
-  fin.position.set(0, 0.8, -6.2);
-  group.add(fin);
-  // Skids.
-  for (const sx of [-0.9, 0.9]) {
-    const skid = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 3.4), dark);
-    skid.position.set(sx, -1.15, 0.4);
-    group.add(skid);
+const BOX = new THREE.BoxGeometry(1, 1, 1);
+function lam(c) { return new THREE.MeshLambertMaterial({ color: c }); }
+function basic(c) { return new THREE.MeshBasicMaterial({ color: c }); }
+function box(mat, w, h, d, x, y, z) {
+  const m = new THREE.Mesh(BOX, mat);
+  m.scale.set(w, h, d); m.position.set(x, y, z);
+  return m;
+}
+
+export class Helicopter {
+  constructor(scene) {
+    this.scene = scene;
+    this.group = new THREE.Group();
+    // Body (police white) + blue cheatline.
+    this.group.add(box(lam(HELI.body), 2.2, 1.4, 4.4, 0, 0, 0));
+    // Cockpit glass (light blue with a warm emissive so it reads at dusk).
+    const glass = new THREE.MeshLambertMaterial({ color: 0x8ab0cc, emissive: 0x3a5a7a, emissiveIntensity: 0.7 });
+    this.group.add(box(glass, 1.8, 0.9, 1.0, 0, 0.1, 2.0));
+    // Tail boom + fin.
+    this.group.add(box(lam(HELI.body), 0.5, 0.5, 4.0, 0, 0.3, -3.6));
+    this.group.add(box(lam(HELI.body), 0.15, 1.4, 1.0, 0, 0.8, -5.4));
+    // Skids.
+    this.group.add(box(lam(0x222226), 0.18, 0.12, 3.4, -0.9, -0.95, 0));
+    this.group.add(box(lam(0x222226), 0.18, 0.12, 3.4, 0.9, -0.95, 0));
+    // BBPD stripe.
+    this.group.add(box(lam(HELI.stripe), 2.26, 0.3, 4.0, 0, 0.2, 0));
+    // Red beacon on top + a soft halo so it reads as a police light.
+    const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), basic(HELI.beacon));
+    beacon.position.set(0, 0.85, 0.6);
+    this.group.add(beacon);
+    const beaconHalo = new THREE.Mesh(new THREE.SphereGeometry(0.5, 10, 8), new THREE.MeshBasicMaterial({ color: HELI.beacon, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false }));
+    beaconHalo.position.set(0, 0.85, 0.6);
+    this.group.add(beaconHalo);
+    this.beacon = beacon; this.beaconHalo = beaconHalo;
+    // Main rotor (spins) + a translucent blur disc so the rotor reads at speed.
+    this.rotor = new THREE.Group();
+    this.rotor.add(box(lam(0xb8bec6), 0.3, 0.08, 11, 0, 0, 0));
+    this.rotor.add(box(lam(0xb8bec6), 11, 0.08, 0.3, 0, 0, 0));
+    const blur = new THREE.Mesh(new THREE.CircleGeometry(5.5, 24), new THREE.MeshBasicMaterial({ color: 0xb8bec6, transparent: true, opacity: 0.14, side: THREE.DoubleSide, depthWrite: false }));
+    blur.rotation.x = -Math.PI / 2;
+    blur.position.y = -0.05;
+    this.rotor.add(blur);
+    this.rotor.position.y = 1.0;
+    this.group.add(this.rotor);
+    // Tail rotor.
+    this.tailRotor = new THREE.Group();
+    this.tailRotor.add(box(lam(0x1a1a1e), 0.12, 2.2, 0.1, 0, 0, 0));
+    this.tailRotor.add(box(lam(0x1a1a1e), 0.12, 0.1, 2.2, 0, 0, 0));
+    this.tailRotor.position.set(0.35, 0.6, -5.4);
+    this.group.add(this.tailRotor);
+    // Searchlight cone — STAGED-ONLY (visible only in ?shot=chase).
+    const coneGeo = new THREE.ConeGeometry(3.2, 14, 16, 1, true);
+    this.spotCone = new THREE.Mesh(coneGeo, new THREE.MeshBasicMaterial({
+      color: HELI.spot, transparent: true, opacity: 0.22,
+      blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide,
+    }));
+    this.spotCone.rotation.x = Math.PI; // apex up at the heli, opening down
+    this.spotCone.position.y = -7;
+    this.spotCone.visible = false;
+    this.group.add(this.spotCone);
+    // Ground pool of light at the staged target (additive disc).
+    this.spotPool = new THREE.Mesh(new THREE.CircleGeometry(3.0, 20), new THREE.MeshBasicMaterial({
+      color: HELI.spot, transparent: true, opacity: 0.35,
+      blending: THREE.AdditiveBlending, depthWrite: false,
+    }));
+    this.spotPool.rotation.x = -Math.PI / 2;
+    this.spotPool.visible = false;
+    this.scene.add(this.spotPool);
+
+    this.group.visible = false;
+    this.scene.add(this.group);
+    this.active = false;
+    this.staged = false;
+    this.angle = 0;
   }
-  // Main rotor: two blades on a mast, plus a translucent blur disc so the
-  // spin reads even in a still screenshot.
-  const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.9, 8), dark);
-  mast.position.y = 1.25;
-  group.add(mast);
-  const rotor = new THREE.Group();
-  rotor.position.y = 1.75;
-  for (const a of [0, Math.PI]) {
-    const blade = new THREE.Mesh(new THREE.BoxGeometry(9.2, 0.08, 0.5), bladeMat);
-    blade.rotation.y = a;
-    rotor.add(blade);
+
+  // staged = true only in ?shot=chase (the cover shot).
+  setStaged(staged) {
+    this.staged = staged;
+    this.spotCone.visible = staged && this.active;
+    this.spotPool.visible = staged && this.active;
   }
-  group.add(rotor);
-  const blurDisc = new THREE.Mesh(
-    new THREE.CircleGeometry(4.6, 28),
-    new THREE.MeshBasicMaterial({ color: 0xd8dce2, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false })
-  );
-  blurDisc.rotation.x = -Math.PI / 2;
-  blurDisc.position.y = 1.78;
-  group.add(blurDisc);
-  // Tail rotor: small spinning cross at the tail.
-  const tailRotor = new THREE.Group();
-  tailRotor.position.set(0.35, 0.7, -6.2);
-  for (const a of [0, Math.PI / 2]) {
-    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.08, 1.7, 0.14), bladeMat);
-    blade.rotation.z = a;
-    tailRotor.add(blade);
+
+  setActive(active) {
+    this.active = active;
+    this.group.visible = active;
+    this.spotCone.visible = this.staged && active;
+    this.spotPool.visible = this.staged && active;
   }
-  group.add(tailRotor);
-  // Red beacon on top + a soft halo sprite so it reads at a glance.
-  const beacon = new THREE.Mesh(
-    new THREE.SphereGeometry(0.22, 10, 8),
-    new THREE.MeshLambertMaterial({ color: 0xaa1010, emissive: 0xff2020, emissiveIntensity: 2.5 })
-  );
-  beacon.position.set(0, 1.0, -0.6);
-  group.add(beacon);
-  const beaconHalo = new THREE.Sprite(new THREE.SpriteMaterial({
-    map: G.glowTexture, transparent: true, depthWrite: false,
-    color: 0xff4040, blending: THREE.AdditiveBlending, opacity: 0.7,
-  }));
-  beaconHalo.scale.set(2.2, 2.2, 1);
-  beaconHalo.position.copy(beacon.position);
-  group.add(beaconHalo);
 
-  // The SpotLight cone pointing down. STAGED-ONLY: off during gameplay.
-  const spot = new THREE.SpotLight(0xfff2c0, 0, 90, 0.42, 0.5, 1.2);
-  spot.position.set(0, -0.8, 0);
-  const spotTarget = new THREE.Object3D();
-  spotTarget.position.set(0, -30, 0);
-  group.add(spotTarget);
-  spot.target = spotTarget;
-  group.add(spot);
-
-  group.visible = false;
-  G.scene.add(group);
-
-  const heli = {
-    group,
-    rotor,
-    tailRotor,
-    beacon,
-    beaconHalo,
-    spot,
-    staged: false,
-    angle: 0,
-    height: 26,
-
-    // Show the helicopter (wanted 3+ or a staged shot).
-    show() {
-      group.visible = true;
-    },
-
-    hide() {
-      group.visible = false;
-      this.setSpot(false);
-    },
-
-    // Stage the helicopter for a shot: hover low (~12 m) over the road
-    // ahead of the car, fully in frame, spotlight ON.
-    stageAt(x, z, height) {
-      this.staged = true;
-      this.height = height || 12;
-      group.position.set(x, this.height, z);
-      group.rotation.y = 0;
-      this.show();
-      this.setSpot(true);
-    },
-
-    // Unstage: back to the patrol height, spotlight OFF.
-    unstage() {
-      this.staged = false;
-      this.height = 26;
-      this.setSpot(false);
-    },
-
-    setSpot(on) {
-      spot.intensity = on ? 900 : 0;
-    },
-
-    // One fixed step: rotors spin, the beacon pulses, and the heli
-    // circles the player (unless staged, when it holds its mark).
-    update(dt) {
-      if (!group.visible) return;
-      this.rotor.rotation.y += dt * 14;
-      this.tailRotor.rotation.x += dt * 22;
-      const pulse = 0.5 + 0.5 * Math.sin(G.simTime * 6);
-      this.beaconHalo.material.opacity = 0.35 + pulse * 0.45;
-      if (this.staged) return;
-      this.angle += dt * 0.22;
-      const r = 34;
-      group.position.set(
-        G.player.x + Math.sin(this.angle) * r,
-        this.height + Math.sin(G.simTime * 0.8) * 1.5,
-        G.player.z + Math.cos(this.angle) * r
-      );
-      group.rotation.y = Math.atan2(G.player.x - group.position.x, G.player.z - group.position.z);
-    },
-  };
-
-  return heli;
+  update(dt, t, playerPos, playerHeading) {
+    if (!this.active) return;
+    // Orbit: stay ~48 m ahead of the player, ~12 m up.
+    const d = headingToDir(playerHeading);
+    this.angle += dt * 0.25;
+    const orbitX = Math.cos(this.angle) * 6;
+    const orbitZ = Math.sin(this.angle) * 6;
+    const tx = playerPos.x + d.x * HELI.ahead + orbitX;
+    const tz = playerPos.z + d.z * HELI.ahead + orbitZ;
+    const k = 1 - Math.pow(0.001, dt);
+    this.group.position.x += (tx - this.group.position.x) * k;
+    this.group.position.y += (HELI.height - this.group.position.y) * k;
+    this.group.position.z += (tz - this.group.position.z) * k;
+    this.group.rotation.y = Math.atan2(playerPos.x - this.group.position.x, playerPos.z - this.group.position.z);
+    // Rotors spin; the red beacon pulses.
+    this.rotor.rotation.y += dt * 18;
+    this.tailRotor.rotation.x += dt * 22;
+    const pulse = 0.55 + Math.sin(t * 6) * 0.45;
+    if (this.beaconHalo) this.beaconHalo.material.opacity = 0.15 + pulse * 0.3;
+    // Staged spotlight: the cone points straight down at the player;
+    // the pool sits on the ground under the heli.
+    if (this.staged) {
+      this.spotPool.position.set(playerPos.x, 0.05, playerPos.z);
+    }
+  }
 }

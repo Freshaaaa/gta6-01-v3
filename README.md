@@ -1,42 +1,62 @@
-# Solmar Bay 3D — Make GTA 6
+# Solmar Bay 3D
 
-[![gta6-01](https://make.fun/badge/gta6-01.svg)](https://make.fun/bounty/gta6-01)
-[![rank](https://make.fun/badge/gta6-01/Freshaaaa/gta6-01-v3/rank.svg)](https://make.fun/bounty/gta6-01)
-[![reward](https://make.fun/badge/gta6-01/Freshaaaa/gta6-01-v3/reward.svg)](https://make.fun/bounty/gta6-01)
+[![make.fun](https://make.fun/badge/gta6-01.svg)](https://make.fun/c/gta6-01)
+[![rank](https://make.fun/badge/gta6-01/Freshaaaa/gta6-01-v3/rank.svg)](https://make.fun/c/gta6-01)
+[![reward](https://make.fun/badge/gta6-01/Freshaaaa/gta6-01-v3/reward.svg)](https://make.fun/c/gta6-01)
 
-An open-world crime game in the spirit of GTA 6, built for the
-[make.fun gta6-01 bounty](https://make.fun/bounty/gta6-01): a golden-hour
-3D city you explore on foot and by car, with traffic and pedestrians, a
-wanted level and police who respond (cars, foot cops and a BBPD
-helicopter), 8 missions, a crew with abilities, weapons, a taxi job, a
-sun coin, a HUD with a minimap, a title screen, a map screen and saves.
+An open-world crime game in the browser — a complete, original GTA-style
+experience built with vanilla JS + Three.js, no build step. Made for the
+[make.fun GTA 6 bounty](https://make.fun/c/gta6-01).
 
-## Play
+## The game
 
-Serve `game/` with any static server and open `game/index.html` in desktop
-Chrome (or run `node serve.ts` and open http://localhost:8087/).
+Golden-hour Solmar Bay: a grid city with a beach resort, a green Comet
+sports car, traffic and pedestrians, police who chase you, 8 missions,
+combat, a dense HUD with a minimap, crew abilities, a radio, and a save
+system — all in `game/`, playable offline from static files.
 
-- **WASD** walk / drive, **Shift** sprint, **Space** handbrake
-- **E** steal / enter a car, **F** punch, **mouse click** shoot
-- **1–5** weapons (Fists, Pistol, SMG, GATOR $1,900, RPG $9,000)
-- **Z / X / C** crew abilities: Mara heals, Rico boosts, Lena drops a star
-- **Q** radio, **M** mute, **N** map, **R** reload
+- **Drive**: WASD/arrows, Space handbrake, E enter/exit any car (steal
+  parked cars — witnesses call the cops), Shift run on foot.
+- **Wanted**: 0–5 stars. Police cruisers chase, foot cops bust you on
+  foot, the BBPD helicopter circles at 3+ stars. Lose the heat and the
+  stars decay, one per 3 seconds once every cop is far away.
+- **Missions**: 8 jobs (STAGE 1/8 → 8/8) — Welcome to Solmar, First
+  Wheels, Beach Run, Downtown Delivery, Night Shift, Van Job, Harbor
+  Heist, The Big Score. Follow the gold beam.
+- **Crew** (Z/X/C): Mara heals +40 HP, Rico gives a +10 m/s ram boost,
+  Lena ghosts one wanted star. Each has a cooldown.
+- **Weapons** (1–5): Fists, Pistol, SMG, GATOR ($1,900), RPG ($9,000).
+  The locked ones can be bought in-game when you can afford them.
+- **Extras**: taxi fares (+$150 a ride), a sun coin on the beach road
+  (+$250), a 3-slot save on the title screen, a full-city map (Tab),
+  and a procedural radio (Q cycles stations, M mutes).
 
-## What is in it
+## Play it
 
-- A grid city at golden hour: six facade colours, lit windows, rooftop
-  kit, storefront awnings, a sunset sky with a sun disc and clouds, lane
-  markings and crosswalks, real palm trees, a park, a beach and a wide
-  ocean.
-- The Comet: a bright-green sports car with four visible wheels, spoiler,
-  bumper, taillights, mirrors and a rear window.
-- Police that chase (cars at 30 m/s, foot cops that grab you in 0.6 s),
-  a wanted level that decays 3 s a star once you are clear, and the BBPD
-  helicopter with a staged spotlight.
-- 8 missions (STAGE 8/8), a taxi job, a sun coin, 3 save slots.
+```sh
+node serve.ts            # serves game/ on http://localhost:8080
+# or
+node serve.ts --port 8087
+```
 
-## Tech
+Open http://localhost:8080 (or :8087) in desktop Chrome and click PLAY.
+No network request: every script, module and texture is a file under
+`game/` (Three.js r160 is vendored as `game/vendor/three.module.min.js`).
 
-Vanilla JS + Three.js r160 (vendored as `game/vendor/three.module.min.js`),
-no build step, no network requests. `main.ts` (Node 22) copies `game/` and
-`screenshots/` to `/output` and writes `/output/dossier.json`.
+## Hand it in
+
+```sh
+mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
+```
+
+`main.ts` copies `game/` + `screenshots/` to the output directory and
+writes `dossier.json` with the vendored make.fun library.
+
+## Screenshots
+
+`screenshots/1-cover.jpg` is the cover (a police chase at 112 km/h),
+then the title screen, the beach run, and the full-city map.
+
+## License
+
+MIT — see [LICENSE](LICENSE).

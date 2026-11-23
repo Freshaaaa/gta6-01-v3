@@ -1,200 +1,159 @@
-// Solmar Bay 3D — vehicles: the car model factory every car is built from.
-// A car is a group: a bright body, a dark glass cabin and rear window, four
-// wheels that stick out at the corners (dark tires, light hubs), a darker
-// rear bumper, a thin rear spoiler, red/orange emissive taillight bars, side
-// mirrors and pale headlights, plus a cheap blob shadow so it sits on the
-// road instead of floating. The same factory builds the player's Comet, the
-// traffic cars, the taxi and the police cars (which add a light bar).
-import * as THREE from 'three';
+// Solmar Bay 3D — car models (v5, written from the brief).
+// One factory builds every car: the hero Comet (luxury: chrome trim, spoke
+// wheels, reflective glass, side skirts, dual exhausts), traffic cars,
+// police interceptors and the taxi. Blob shadows keep cars grounded
+// (no shadow maps — fast under SwiftShader).
 
-export const CAR_COLORS = {
-  comet: 0x2fae4e, // bright green — the hero car
-  red: 0xc23b2e,
-  teal: 0x2e8a8a,
-  grey: 0x8a8f96,
-  yellow: 0xe8b83a, // taxi
-  white: 0xe9edf2, // police
-  blue: 0x2e4a7a,
-  purple: 0x7a4a9a,
-};
+import * as THREE from '../vendor/three.module.min.js';
+import { COMET, POLICE } from './config.js';
 
-const TIRE_COLOR = 0x2a2a2e;
-const HUB_COLOR = 0xdfe3e8;
-const GLASS_COLOR = 0x18202a;
+const BOX = new THREE.BoxGeometry(1, 1, 1);
+const CYL = new THREE.CylinderGeometry(1, 1, 1, 12);
 
-// Build one car. opts: { color, model, police, taxi, spoiler }.
-// Returns { group, wheels, setSpeed, model } — wheels spin with speed.
-export function buildCar(G, opts) {
-  const color = opts.color ?? CAR_COLORS.grey;
-  const group = new THREE.Group();
-  const bodyMat = new THREE.MeshLambertMaterial({ color });
-  const darkMat = new THREE.MeshLambertMaterial({ color: 0x1c1e24 });
-  const glassMat = new THREE.MeshLambertMaterial({
-    color: GLASS_COLOR, emissive: 0x0a1420, emissiveIntensity: 0.6,
-  });
-  const hubMat = new THREE.MeshLambertMaterial({
-    color: HUB_COLOR, emissive: 0x555a60, emissiveIntensity: 0.5,
-  });
-  const tireMat = new THREE.MeshLambertMaterial({ color: TIRE_COLOR });
+function lam(color, extra = {}) { return new THREE.MeshLambertMaterial({ color, ...extra }); }
+function basic(color, extra = {}) { return new THREE.MeshBasicMaterial({ color, ...extra }); }
 
-  // Main body: long, low, slightly tapered by a second box up front.
-  const body = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.62, 4.4), bodyMat);
-  body.position.y = 0.62;
-  body.castShadow = !G.lowfx;
-  group.add(body);
-  const nose = new THREE.Mesh(new THREE.BoxGeometry(1.86, 0.42, 0.9), bodyMat);
-  nose.position.set(0, 0.58, 2.15);
-  group.add(nose);
+function box(mat, w, h, d, x, y, z) {
+  const m = new THREE.Mesh(BOX, mat);
+  m.scale.set(w, h, d);
+  m.position.set(x, y, z);
+  return m;
+}
 
-  // Cabin + rear window (dark glass, set back so the rear reads as a car).
-  const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.55, 2.0), glassMat);
-  cabin.position.set(0, 1.18, -0.3);
-  cabin.castShadow = !G.lowfx;
-  group.add(cabin);
-  const rearGlass = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.5, 0.12), glassMat);
-  rearGlass.position.set(0, 1.05, -1.36);
-  rearGlass.rotation.x = -0.28;
-  group.add(rearGlass);
+// A wheel with a spoke pattern: dark tire + light hub + 5 thin spokes.
+// Returns a group whose local origin is the wheel centre; spin by rotating
+// the group on its local X axis (the axle).
+export function makeWheel(radius = 0.42) {
+  const g = new THREE.Group();
+  const tire = new THREE.Mesh(CYL, lam(COMET.tire));
+  tire.rotation.z = Math.PI / 2; // axle along X
+  tire.scale.set(radius, 0.3, radius);
+  g.add(tire);
+  const hub = new THREE.Mesh(CYL, lam(COMET.hub, { emissive: COMET.hubGlow, emissiveIntensity: 0.5 }));
+  hub.rotation.z = Math.PI / 2;
+  hub.scale.set(radius * 0.58, 0.32, radius * 0.58);
+  g.add(hub);
+  // 5 spokes (thin boxes radiating in the wheel plane).
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2;
+    const sp = box(lam(0xc8ccd2), 0.08, radius * 0.95, 0.06, 0, 0, 0);
+    sp.position.set(0, Math.sin(a) * radius * 0.28, Math.cos(a) * radius * 0.28);
+    sp.rotation.x = -a;
+    sp.position.x = 0.17; // outer face so the spokes read
+    g.add(sp);
+  }
+  return g;
+}
 
-  // Rear bumper: a darker strip across the back.
-  const bumper = new THREE.Mesh(new THREE.BoxGeometry(2.02, 0.28, 0.24), darkMat);
-  bumper.position.set(0, 0.42, -2.22);
-  group.add(bumper);
-  // Front bumper, same treatment.
-  const frontBumper = new THREE.Mesh(new THREE.BoxGeometry(2.02, 0.26, 0.22), darkMat);
-  frontBumper.position.set(0, 0.4, 2.26);
-  group.add(frontBumper);
+// Blob shadow: a dark ellipse under the car (cheap, no shadow map).
+function blobShadow(w, d) {
+  const m = new THREE.Mesh(
+    new THREE.CircleGeometry(1, 20),
+    new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.32, depthWrite: false }),
+  );
+  m.rotation.x = -Math.PI / 2;
+  m.scale.set(w, d, 1);
+  m.position.y = 0.03;
+  return m;
+}
 
-  // Rear spoiler: a thin wing on two small struts (sports-car read).
-  if (opts.spoiler !== false) {
-    const wing = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.09, 0.5), darkMat);
-    wing.position.set(0, 1.18, -2.05);
-    group.add(wing);
-    for (const sx of [-0.7, 0.7]) {
-      const strut = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.3, 0.1), darkMat);
-      strut.position.set(sx, 1.0, -2.05);
-      group.add(strut);
+// Generic car body. opts: { color, isVan, isPolice, isTaxi, luxury }.
+// Returns { group, wheels[4], front (Vector3-ish local +z), length }.
+export function makeCar(opts = {}) {
+  const color = opts.color ?? 0xd82828;
+  const isVan = !!opts.isVan;
+  const isPolice = !!opts.isPolice;
+  const isTaxi = !!opts.isTaxi;
+  const luxury = !!opts.luxury; // parked luxury cars: chrome trim
+  const g = new THREE.Group();
+  const bodyMat = lam(color);
+  const len = isVan ? 5.2 : 4.4;
+  const wid = 1.9;
+  const bodyH = isVan ? 1.5 : 0.62;
+
+  // Main body.
+  const body = box(bodyMat, wid, bodyH, len, 0, 0.62, 0);
+  g.add(body);
+  // Cabin / glasshouse.
+  if (isVan) {
+    const cab = box(lam(color), wid * 0.96, 0.9, len * 0.55, 0, 1.7, -0.3);
+    g.add(cab);
+    const shield = box(lam(COMET.glass), wid * 0.9, 0.7, 0.1, 0, 1.65, len * 0.28);
+    g.add(shield);
+  } else {
+    const cab = box(lam(COMET.glass), wid * 0.82, 0.5, len * 0.42, 0, 1.12, -0.25);
+    g.add(cab);
+    // Roof panel over the glass.
+    const roof = box(bodyMat, wid * 0.8, 0.1, len * 0.4, 0, 1.4, -0.25);
+    g.add(roof);
+    // Rear window (dark glass panel, visible from chase cam).
+    const rearGlass = box(lam(0x2a3440), wid * 0.7, 0.42, 0.08, 0, 1.05, -len / 2 + 0.32);
+    g.add(rearGlass);
+  }
+  // Chrome trim (luxury / Comet): thin light strips along the sides + windows.
+  if (luxury || opts.comet) {
+    const chrome = lam(COMET.chrome);
+    g.add(box(chrome, 0.06, 0.08, len * 0.92, -wid / 2 - 0.01, 0.78, 0));
+    g.add(box(chrome, 0.06, 0.08, len * 0.92, wid / 2 + 0.01, 0.78, 0));
+    g.add(box(chrome, wid * 0.8, 0.06, 0.06, 0, 1.38, len * 0.22));
+    // Side skirts (thin dark strips under the doors).
+    g.add(box(lam(0x1a1a1e), 0.1, 0.16, len * 0.7, -wid / 2 - 0.02, 0.32, 0));
+    g.add(box(lam(0x1a1a1e), 0.1, 0.16, len * 0.7, wid / 2 + 0.02, 0.32, 0));
+  }
+  // Rear bumper (darker strip) + spoiler (Comet / sports).
+  g.add(box(lam(0x222226), wid * 0.98, 0.22, 0.18, 0, 0.42, -len / 2 - 0.02));
+  if (opts.comet || opts.sport) {
+    g.add(box(bodyMat, wid * 0.9, 0.07, 0.5, 0, 1.12, -len / 2 + 0.15));
+    g.add(box(lam(0x1a1a1e), 0.08, 0.22, 0.08, -wid * 0.3, 0.98, -len / 2 + 0.15));
+    g.add(box(lam(0x1a1a1e), 0.08, 0.22, 0.08, wid * 0.3, 0.98, -len / 2 + 0.15));
+  }
+  // Taillights: red/orange emissive horizontal bars (NOT pale rectangles).
+  const tailMat = basic(COMET.tail);
+  g.add(box(tailMat, wid * 0.32, 0.14, 0.08, -wid * 0.28, 0.78, -len / 2 - 0.06));
+  g.add(box(tailMat, wid * 0.32, 0.14, 0.08, wid * 0.28, 0.78, -len / 2 - 0.06));
+  // Headlights (warm).
+  const headMat = basic(COMET.head);
+  g.add(box(headMat, 0.34, 0.14, 0.08, -wid * 0.3, 0.72, len / 2 + 0.02));
+  g.add(box(headMat, 0.34, 0.14, 0.08, wid * 0.3, 0.72, len / 2 + 0.02));
+  // Side mirrors.
+  g.add(box(lam(0x1a1a1e), 0.16, 0.12, 0.22, -wid / 2 - 0.12, 1.05, len * 0.18));
+  g.add(box(lam(0x1a1a1e), 0.16, 0.12, 0.22, wid / 2 + 0.12, 1.05, len * 0.18));
+  // Dual exhausts (Comet): 2 small dark cylinders at the rear.
+  if (opts.comet) {
+    for (const sx of [-0.5, 0.5]) {
+      const ex = new THREE.Mesh(CYL, lam(0x3a3a3e));
+      ex.rotation.x = Math.PI / 2;
+      ex.scale.set(0.11, 0.3, 0.11);
+      ex.position.set(sx, 0.32, -len / 2 - 0.08);
+      g.add(ex);
     }
   }
-
-  // Taillights: red/orange emissive horizontal bars, not pale rectangles.
-  const tailMat = new THREE.MeshLambertMaterial({
-    color: 0xaa1408, emissive: 0xff2a10, emissiveIntensity: 1.6,
-  });
-  for (const sx of [-0.62, 0.62]) {
-    const tail = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.16, 0.08), tailMat);
-    tail.position.set(sx, 0.82, -2.24);
-    group.add(tail);
+  // Police livery: white body + blue cheatline + light bar.
+  if (isPolice) {
+    g.add(box(lam(POLICE.cheat), wid + 0.02, 0.22, len * 0.9, 0, 0.62, 0));
+    const bar = box(lam(0x1a1a1e), wid * 0.6, 0.16, 0.5, 0, 1.52, -0.2);
+    g.add(bar);
+    g.add(box(basic(POLICE.lightRed), 0.4, 0.14, 0.4, -0.32, 1.64, -0.2));
+    g.add(box(basic(POLICE.lightBlue), 0.4, 0.14, 0.4, 0.32, 1.64, -0.2));
   }
-  // Headlights: pale yellow-white bars up front.
-  const headMat = new THREE.MeshLambertMaterial({
-    color: 0xfff2c0, emissive: 0xffe9a0, emissiveIntensity: 1.2,
-  });
-  for (const sx of [-0.62, 0.62]) {
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.14, 0.08), headMat);
-    head.position.set(sx, 0.78, 2.62);
-    group.add(head);
+  // Taxi sign.
+  if (isTaxi) {
+    g.add(box(basic(0xffe828), 0.7, 0.22, 0.4, 0, 1.55, -0.1));
   }
-
-  // Side mirrors: small boxes on stalks.
-  for (const sx of [-1, 1]) {
-    const mirror = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.12, 0.24), darkMat);
-    mirror.position.set(sx * 1.08, 1.05, 0.75);
-    group.add(mirror);
-  }
-
-  // Four wheels, sticking out slightly at the corners: dark tires with
-  // light hubs (radius 0.25) so all four read from the chase view.
+  // Wheels (4, visible at the corners, sticking out slightly).
   const wheels = [];
-  const wheelGeo = new THREE.CylinderGeometry(0.42, 0.42, 0.32, 14);
-  wheelGeo.rotateZ(Math.PI / 2);
-  const hubGeo = new THREE.CylinderGeometry(0.25, 0.25, 0.34, 10);
-  hubGeo.rotateZ(Math.PI / 2);
-  for (const [wx, wz] of [[-1.0, 1.45], [1.0, 1.45], [-1.0, -1.45], [1.0, -1.45]]) {
-    const wheel = new THREE.Group();
-    const tire = new THREE.Mesh(wheelGeo, tireMat);
-    tire.castShadow = !G.lowfx;
-    wheel.add(tire);
-    const hub = new THREE.Mesh(hubGeo, hubMat);
-    wheel.add(hub);
-    wheel.position.set(wx, 0.42, wz);
-    group.add(wheel);
-    wheels.push(wheel);
+  const wy = 0.42, wx = wid / 2 + 0.02, wzF = len / 2 - 0.95, wzR = -len / 2 + 0.95;
+  for (const [x, z] of [[-wx, wzF], [wx, wzF], [-wx, wzR], [wx, wzR]]) {
+    const w = makeWheel(0.42);
+    w.position.set(x, wy, z);
+    g.add(w);
+    wheels.push(w);
   }
+  g.add(blobShadow(wid * 0.85, len * 0.62));
+  return { group: g, wheels, length: len, width: wid };
+}
 
-  // Blob shadow: a dark ellipse under the car so it sits on the road.
-  const shadowCanvas = document.createElement('canvas');
-  shadowCanvas.width = 64;
-  shadowCanvas.height = 128;
-  const sg = shadowCanvas.getContext('2d');
-  const sgrad = sg.createRadialGradient(32, 64, 4, 32, 64, 62);
-  sgrad.addColorStop(0, 'rgba(0,0,0,0.42)');
-  sgrad.addColorStop(0.7, 'rgba(0,0,0,0.25)');
-  sgrad.addColorStop(1, 'rgba(0,0,0,0)');
-  sg.fillStyle = sgrad;
-  sg.fillRect(0, 0, 64, 128);
-  const shadowTex = new THREE.CanvasTexture(shadowCanvas);
-  const blob = new THREE.Mesh(
-    new THREE.PlaneGeometry(2.7, 5.2),
-    new THREE.MeshBasicMaterial({ map: shadowTex, transparent: true, depthWrite: false })
-  );
-  blob.rotation.x = -Math.PI / 2;
-  blob.position.y = 0.03;
-  group.add(blob);
-
-  // Police light bar: red/blue emissive blocks on the roof.
-  let lightBar = null;
-  if (opts.police) {
-    lightBar = new THREE.Group();
-    const red = new THREE.MeshLambertMaterial({ color: 0xaa1010, emissive: 0xff2020, emissiveIntensity: 2.0 });
-    const blue = new THREE.MeshLambertMaterial({ color: 0x1020aa, emissive: 0x2040ff, emissiveIntensity: 2.0 });
-    const r = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.16, 0.3), red);
-    r.position.x = -0.35;
-    const b = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.16, 0.3), blue);
-    b.position.x = 0.35;
-    lightBar.add(r);
-    lightBar.add(b);
-    lightBar.position.set(0, 1.52, -0.3);
-    group.add(lightBar);
-    // Police cheatline: a blue stripe down the body side.
-    const stripe = new THREE.Mesh(new THREE.BoxGeometry(2.02, 0.22, 4.0),
-      new THREE.MeshLambertMaterial({ color: 0x1e5fd6 }));
-    stripe.position.y = 0.72;
-    group.add(stripe);
-  }
-
-  // Taxi sign on the roof.
-  if (opts.taxi) {
-    const sign = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.22, 0.3),
-      new THREE.MeshLambertMaterial({ color: 0x222222, emissive: 0xffc860, emissiveIntensity: 1.0 }));
-    sign.position.set(0, 1.55, -0.3);
-    group.add(sign);
-  }
-
-  const car = {
-    group,
-    wheels,
-    lightBar,
-    model: opts.model || 'Sedan',
-    color,
-    x: 0,
-    z: 0,
-    heading: 0,
-    speed: 0,
-    staged: !!opts.staged,
-    isPolice: !!opts.police,
-    isTaxi: !!opts.taxi,
-    // Spin the wheels from the speed (visual only).
-    spin(dt) {
-      const w = this.speed / 0.42;
-      for (const wheel of this.wheels) wheel.rotation.x += w * dt;
-    },
-    // Place the mesh from the logical state.
-    sync() {
-      this.group.position.set(this.x, 0, this.z);
-      this.group.rotation.y = this.heading;
-    },
-  };
-  car.sync();
-  return car;
+// The hero Comet (Dante's car): bright green + full luxury trim.
+export function makeComet() {
+  return makeCar({ color: COMET.body, comet: true, sport: true, luxury: true });
 }

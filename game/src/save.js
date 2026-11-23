@@ -1,113 +1,70 @@
-// Solmar Bay 3D — save: localStorage save slots and the progressed-save format.
-// Slot 1 is the live slot the game reads on boot and writes with saveNow().
-// The other two slots exist so the title screen can show three save slots
-// with real progress. Everything is plain JSON; nothing leaves the browser.
-const SAVE_KEY = 'solmar-bay-save-v1';
-const SAVE_KEY_2 = 'solmar-bay-save-v2';
-const SAVE_KEY_3 = 'solmar-bay-save-v3';
-const SLOT_KEYS = [SAVE_KEY, SAVE_KEY_2, SAVE_KEY_3];
+// Solmar Bay 3D — save / load (v5, written from the brief).
+// One localStorage key, three visible slots on the title screen.
+// Save shape: { money, x, z, time, health, mission, weapons, coins }.
+// weapons: { current, ammo: [null, mag1, mag2, ...], reserve: [...] }.
 
-// Build the save object the game writes. money, position, clock, health,
-// the highest mission unlocked, the weapon loadout and the collected coins.
-export function makeSave(state) {
+import { SAVE_KEY, START_MONEY } from './config.js';
+
+export function defaultSave() {
   return {
-    money: Math.round(state.money),
-    x: Math.round(state.player.x * 10) / 10,
-    z: Math.round(state.player.z * 10) / 10,
-    time: Math.round(state.timeOfDay * 100) / 100,
-    health: Math.round(state.player.health),
-    mission: state.mission.unlocked,
-    weapons: {
-      current: state.weapons.current,
-      ammo: state.weapons.ammo.slice(),
-      reserve: state.weapons.reserve.slice(),
-    },
-    coins: state.coinsCollected.slice(),
+    money: START_MONEY,
+    x: 0, z: 0,
+    time: 17.5, // 17:30 golden hour
+    health: 100,
+    mission: 0, // current mission index (0-7); unlocked = mission
+    weapons: { current: 0, ammo: [null, 12, 30], reserve: [null, 48, 120] },
+    coins: [], // collected coin ids (0 = sun coin at 0,270); fresh = none
   };
 }
 
-// Parse a stored save. Returns null when the slot is empty or corrupt, so a
-// bad slot never blocks the boot — the game just starts fresh.
-export function parseSave(raw) {
-  if (!raw) return null;
+export function readSaveRaw() {
   try {
-    const s = JSON.parse(raw);
-    if (typeof s !== 'object' || s === null) return null;
-    if (typeof s.money !== 'number') return null;
-    return s;
-  } catch {
-    return null;
-  }
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (typeof parsed !== 'object' || parsed === null) return null;
+    return parsed;
+  } catch (e) { return null; }
 }
 
-// Read slot 1 as a JSON string (the playtest asserts the string holds "money").
-export function readSaveString() {
-  try {
-    return window.localStorage.getItem(SAVE_KEY) || '';
-  } catch {
-    return '';
-  }
+export function readSave() {
+  const s = readSaveRaw();
+  return s ? JSON.stringify(s) : null;
 }
 
-// Write slot 1 now. Returns true when the write landed.
-export function writeSave(state) {
+export function writeSave(data) {
   try {
-    window.localStorage.setItem(SAVE_KEY, JSON.stringify(makeSave(state)));
+    localStorage.setItem(SAVE_KEY, JSON.stringify(data));
     return true;
-  } catch {
-    return false;
-  }
+  } catch (e) { return false; }
 }
 
-// Read a slot (0, 1 or 2) as a parsed object, or null when it is empty.
-export function readSlot(index) {
-  const key = SLOT_KEYS[index] || SAVE_KEY;
-  try {
-    return parseSave(window.localStorage.getItem(key));
-  } catch {
-    return null;
-  }
+export function clearSave() {
+  try { localStorage.removeItem(SAVE_KEY); } catch (e) {}
 }
 
-// Copy the live slot into another slot (the title screen's Load Game path).
-export function copySlot(fromIndex, toIndex) {
-  const from = SLOT_KEYS[fromIndex] || SAVE_KEY;
-  const to = SLOT_KEYS[toIndex] || SAVE_KEY;
-  try {
-    const raw = window.localStorage.getItem(from);
-    if (!raw) return false;
-    window.localStorage.setItem(to, raw);
-    return true;
-  } catch {
-    return false;
+// Merge a partial save over the defaults (old saves stay loadable).
+export function normalizeSave(raw) {
+  const d = defaultSave();
+  if (!raw) return d;
+  for (const k of Object.keys(d)) {
+    if (raw[k] !== undefined) d[k] = raw[k];
   }
+  if (!d.weapons || typeof d.weapons !== 'object') d.weapons = defaultSave().weapons;
+  if (!Array.isArray(d.weapons.ammo)) d.weapons.ammo = [null, 12, 30];
+  if (!Array.isArray(d.weapons.reserve)) d.weapons.reserve = [null, 48, 120];
+  if (!Array.isArray(d.coins)) d.coins = [];
+  return d;
 }
 
-// Apply a parsed save onto the live state. Only fields the save actually
-// carries are applied, so an old or partial save can never corrupt a run.
-export function applySave(state, save) {
-  if (!save) return;
-  if (typeof save.money === 'number') state.money = save.money;
-  if (typeof save.x === 'number') state.player.x = save.x;
-  if (typeof save.z === 'number') state.player.z = save.z;
-  if (typeof save.time === 'number') state.timeOfDay = save.time;
-  if (typeof save.health === 'number') state.player.health = save.health;
-  if (typeof save.mission === 'number') state.mission.unlocked = save.mission;
-  if (save.weapons && typeof save.weapons === 'object') {
-    if (typeof save.weapons.current === 'number') state.weapons.current = save.weapons.current;
-    if (Array.isArray(save.weapons.ammo)) state.weapons.ammo = save.weapons.ammo.slice();
-    if (Array.isArray(save.weapons.reserve)) state.weapons.reserve = save.weapons.reserve.slice();
-  }
-  if (Array.isArray(save.coins)) state.coinsCollected = save.coins.slice();
-}
-
-// A short human line for a save slot on the title screen ("$7,122 — M7 — 17:30").
-export function slotSummary(save) {
-  if (!save) return 'Empty slot';
-  const money = typeof save.money === 'number' ? save.money : 0;
-  const mission = typeof save.mission === 'number' ? save.mission : 0;
-  const h = Math.floor(save.time || 0);
-  const m = Math.floor(((save.time || 0) - h) * 60);
-  const clock = String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
-  return '$' + money.toLocaleString('en-US') + ' — M' + mission + ' — ' + clock;
+// Slot summaries for the title screen (3 slots; slot 1 is the live save).
+export function slotSummaries() {
+  const slots = [];
+  const live = readSaveRaw();
+  slots.push(live
+    ? { label: 'Slot 1 — Continue', money: live.money ?? 0, mission: live.mission ?? 0, time: live.time ?? 17.5 }
+    : { label: 'Slot 1 — Empty', money: null, mission: null, time: null });
+  slots.push({ label: 'Slot 2 — Empty', money: null, mission: null, time: null });
+  slots.push({ label: 'Slot 3 — Empty', money: null, mission: null, time: null });
+  return slots;
 }

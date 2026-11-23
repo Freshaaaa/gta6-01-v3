@@ -1,200 +1,236 @@
-// Solmar Bay 3D — player: Dante on foot and behind the wheel.
-// On foot Dante walks with WASD (3.8 m/s, 4.6 m/s sprinting with Shift),
-// turns to face his movement, and can steal the nearest parked car with E.
-// In a car the Comet accelerates, brakes, steers and handbrakes; the chase
-// camera follows it. The player's logical position is what the missions,
-// the wanted system and the save all read.
-import * as THREE from 'three';
-import { buildCar, CAR_COLORS } from './vehicles.js';
+// Solmar Bay 3D — the player (v5, written from the brief).
+// Dante on foot (walk/run, punch) and the Comet (arcade driving physics:
+// accelerate, brake, reverse, handbrake, steering, gears). Chase camera
+// lives here too (chaseDist 5.5, chaseLateral 1.0). Collision is a cheap
+// AABB push-out against the city's building boxes.
 
-const WALK_SPEED = 3.8;
-const SPRINT_SPEED = 5.6;
-const CAR_ACCEL = 14;
-const CAR_BRAKE = 26;
-const CAR_MAX_SPEED = 42;
-const CAR_REVERSE_MAX = 10;
-const STEER_RATE = 1.9;
+import * as THREE from '../vendor/three.module.min.js';
+import { ENGINE, SAFEHOUSE } from './config.js';
+import { clamp, dist, headingToDir, turnToward } from './util.js';
 
-// Build Dante's on-foot figure: a simple box person with a jacket, head
-// and legs, plus a blob shadow. He must read as a person at a glance.
-function buildDante(G) {
-  const group = new THREE.Group();
-  const jacket = new THREE.MeshLambertMaterial({ color: 0x2e4a7a });
-  const skin = new THREE.MeshLambertMaterial({ color: 0xd8a878 });
-  const pants = new THREE.MeshLambertMaterial({ color: 0x2a2a30 });
-  const torso = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.78, 0.36), jacket);
-  torso.position.y = 1.15;
-  torso.castShadow = !G.lowfx;
-  group.add(torso);
-  const head = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.42, 0.42), skin);
-  head.position.y = 1.78;
-  group.add(head);
-  const hair = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.14, 0.44),
-    new THREE.MeshLambertMaterial({ color: 0x1a1410 }));
-  hair.position.y = 2.02;
-  group.add(hair);
-  for (const sx of [-0.16, 0.16]) {
-    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.72, 0.26), pants);
-    leg.position.set(sx, 0.38, 0);
-    group.add(leg);
-  }
-  for (const sx of [-0.4, 0.4]) {
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.62, 0.2), jacket);
-    arm.position.set(sx, 1.15, 0);
-    group.add(arm);
-  }
-  return group;
+const BOX = new THREE.BoxGeometry(1, 1, 1);
+function lam(c) { return new THREE.MeshLambertMaterial({ color: c }); }
+function box(mat, w, h, d, x, y, z) {
+  const m = new THREE.Mesh(BOX, mat);
+  m.scale.set(w, h, d); m.position.set(x, y, z);
+  return m;
 }
 
-export function createPlayer(G) {
-  const mesh = buildDante(G);
-  mesh.position.set(G.player.x, 0, G.player.z);
-  G.scene.add(mesh);
+// Dante on foot: simple box figure (jacket, head, legs), ~1.8m tall.
+function makeDanteMesh() {
+  const g = new THREE.Group();
+  g.add(box(lam(0x2a4a7a), 0.55, 0.75, 0.32, 0, 1.15, 0)); // jacket
+  g.add(box(lam(0xd8b088), 0.34, 0.34, 0.34, 0, 1.72, 0)); // head
+  g.add(box(lam(0x2a2a30), 0.22, 0.7, 0.24, -0.14, 0.45, 0)); // leg L
+  g.add(box(lam(0x2a2a30), 0.22, 0.7, 0.24, 0.14, 0.45, 0)); // leg R
+  g.add(box(lam(0x2a4a7a), 0.16, 0.6, 0.16, -0.36, 1.15, 0)); // arm L
+  g.add(box(lam(0x2a4a7a), 0.16, 0.6, 0.16, 0.36, 1.15, 0)); // arm R
+  // Blob shadow.
+  const sh = new THREE.Mesh(new THREE.CircleGeometry(0.5, 16),
+    new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.3, depthWrite: false }));
+  sh.rotation.x = -Math.PI / 2; sh.position.y = 0.03;
+  g.add(sh);
+  return g;
+}
 
-  const player = {
-    mesh,
-    // The Comet: Dante's own car, spawned for staged shots and as the
-    // parked hero car the player can steal near the start.
-    comet: null,
+export class Player {
+  constructor(scene, cityBoxes) {
+    this.boxes = cityBoxes; // building AABBs for push-out
+    this.x = 0; this.z = 0;
+    this.heading = 0; // 0 = +z (north)
+    this.inCar = false;
+    this.car = null; // { group, wheels, length, width, speed, heading }
+    this.speed = 0; // m/s (car) — on foot uses walkSpeed
+    this.walkSpeed = 0;
+    this.health = 100;
+    this.money = 0;
+    this.boostTimer = 0; // Rico ram boost
+    this.mesh = makeDanteMesh();
+    this.mesh.position.set(0, 0.06, 0);
+    scene.add(this.mesh);
+    // Dante's own Comet is a parked car owned by Traffic (parked at 6,-6);
+    // the player enters it like any other car. No second Comet lives here.
+  }
 
-    // Give Dante his Comet (used by the staged cover/beach shots).
-    giveComet(x, z, heading) {
-      if (this.comet) {
-        G.scene.remove(this.comet.group);
-      }
-      const car = buildCar(G, { color: CAR_COLORS.comet, model: 'Comet', spoiler: true });
-      car.x = x;
-      car.z = z;
-      car.heading = heading;
-      car.sync();
-      G.scene.add(car.group);
-      this.comet = car;
-      return car;
-    },
+  // --- car state -------------------------------------------------------------
+  enterCar(car) {
+    // car: a traffic/parked car object { group, wheels, length, model, x, z, heading }
+    this.inCar = true;
+    this.car = car;
+    this.speed = 0;
+    car.speed = 0;
+    this.mesh.visible = false;
+    return true;
+  }
+  exitCar() {
+    if (!this.inCar || !this.car) return;
+    const d = headingToDir(this.car.heading);
+    this.x = this.car.x + d.x * 2.5;
+    this.z = this.car.z + d.z * 2.5;
+    this.heading = this.car.heading;
+    this.car.speed = 0;
+    this.speed = 0;
+    this.inCar = false;
+    this.car = null;
+    this.mesh.visible = true;
+    this.mesh.position.set(this.x, 0.06, this.z);
+    this.mesh.rotation.y = this.heading;
+  }
+  // Position of the player (car pos when driving, foot pos otherwise).
+  pos() {
+    if (this.inCar && this.car) return { x: this.car.x, z: this.car.z };
+    return { x: this.x, z: this.z };
+  }
+  teleport(x, z) {
+    if (this.inCar && this.car) {
+      this.car.x = x; this.car.z = z;
+      this.car.group.position.set(x, 0.02, z);
+    } else {
+      this.x = x; this.z = z;
+      this.mesh.position.set(x, 0.06, z);
+    }
+  }
+  setHeading(h) {
+    if (this.inCar && this.car) {
+      this.car.heading = h;
+      this.car.group.rotation.y = h;
+    } else {
+      this.heading = h;
+      this.mesh.rotation.y = h;
+    }
+  }
 
-    // Step into a car: Dante's mesh hides, the car becomes his.
-    enterCar(car) {
-      G.player.car = car;
-      G.player.inCar = true;
-      mesh.visible = false;
-      G.audio.setEngine(car.speed, true);
-      return true;
-    },
+  // --- per-frame update -------------------------------------------------------
+  update(dt, input, autoDrive) {
+    if (this.inCar && this.car) this._updateCar(dt, input, autoDrive);
+    else this._updateFoot(dt, input);
+    if (this.boostTimer > 0) this.boostTimer -= dt;
+  }
 
-    // Step out: Dante appears beside the car, the car stays parked.
-    exitCar() {
-      if (!G.player.inCar || !G.player.car) {
-        G.player.inCar = false;
-        return false;
-      }
-      const car = G.player.car;
-      const sx = Math.cos(car.heading);
-      const sz = -Math.sin(car.heading);
-      G.player.x = car.x + sx * 2.2;
-      G.player.z = car.z + sz * 2.2;
-      G.player.heading = car.heading;
-      G.player.car = null;
-      G.player.inCar = false;
-      mesh.visible = true;
-      mesh.position.set(G.player.x, 0, G.player.z);
-      G.audio.setEngine(0, false);
-      return true;
-    },
+  _updateFoot(dt, input) {
+    const walk = 4.2, run = 7.0;
+    let mx = 0, mz = 0;
+    if (input.forward) mz += 1;
+    if (input.back) mz -= 1;
+    if (input.left) mx -= 1;
+    if (input.right) mx += 1;
+    const mag = Math.hypot(mx, mz);
+    if (mag > 0) {
+      const sp = input.run ? run : walk;
+      // Move relative to the camera heading (behind the player).
+      const fwd = { x: Math.sin(this.heading), z: Math.cos(this.heading) };
+      const rgt = { x: Math.cos(this.heading), z: -Math.sin(this.heading) };
+      const dx = (fwd.x * mz + rgt.x * mx) / mag * sp * dt;
+      const dz = (fwd.z * mz + rgt.z * mx) / mag * sp * dt;
+      const nx = this.x + dx, nz = this.z + dz;
+      if (!this._hitsBuilding(nx, nz, 0.6)) { this.x = nx; this.z = nz; }
+      // Face the movement direction.
+      const target = Math.atan2(dx, dz);
+      this.heading = turnToward(this.heading, target, 10 * dt);
+      this.walkSpeed = sp;
+    } else this.walkSpeed = 0;
+    this.mesh.position.set(this.x, 0.06, this.z);
+    this.mesh.rotation.y = this.heading;
+    // Walk bob.
+    this.mesh.position.y = 0.06 + (this.walkSpeed > 0 ? Math.abs(Math.sin(performance.now() * 0.012)) * 0.05 : 0);
+  }
 
-    // One fixed step of movement: on foot or driving.
-    update(dt) {
-      const keys = G.keys;
-      if (G.player.inCar && G.player.car) {
-        this.drive(dt, keys);
-      } else {
-        this.walk(dt, keys);
-      }
-      mesh.position.set(G.player.x, 0, G.player.z);
-      mesh.rotation.y = G.player.heading;
-    },
+  _updateCar(dt, input, autoDrive) {
+    const c = this.car;
+    const top = ENGINE.playerTopSpeed + (this.boostTimer > 0 ? 10 : 0);
+    let accel = 0;
+    if (autoDrive || input.forward) accel = 14;
+    if (input.back) accel = -10;
+    if (input.handbrake) { this.speed *= Math.max(0, 1 - 4 * dt); }
+    this.speed += accel * dt;
+    // Drag + rolling resistance.
+    this.speed -= this.speed * 0.35 * dt;
+    if (!autoDrive && !input.forward && !input.back) this.speed -= Math.sign(this.speed) * Math.min(Math.abs(this.speed), 6 * dt);
+    this.speed = clamp(this.speed, -9, top);
+    if (Math.abs(this.speed) < 0.05 && !input.forward && !input.back) this.speed = 0;
+    // Steering (stronger at low speed, weaker at high speed).
+    const steerInput = (input.left ? 1 : 0) - (input.right ? 1 : 0);
+    const steerAuthority = clamp(Math.abs(this.speed) / 8, 0, 1) * 1.9;
+    c.heading += steerInput * steerAuthority * dt * Math.sign(this.speed || 1) * (this.speed < 0 ? -1 : 1);
+    const d = headingToDir(c.heading);
+    const nx = c.x + d.x * this.speed * dt;
+    const nz = c.z + d.z * this.speed * dt;
+    if (!this._hitsBuilding(nx, nz, 1.4)) {
+      c.x = nx; c.z = nz;
+    } else {
+      // Bump: kill most of the speed, small thud handled by the caller.
+      this.speed *= 0.25;
+      c.bumped = true;
+    }
+    // Keep inside the world.
+    c.x = clamp(c.x, -205, 205);
+    c.z = clamp(c.z, -205, 300);
+    c.group.position.set(c.x, 0.02, c.z);
+    c.group.rotation.y = c.heading;
+    // Sync the driven speed back onto the car object (the HUD + the
+    // __solmar.car API read c.speed, not this.speed).
+    c.speed = this.speed;
+    // Wheel spin.
+    const spin = (this.speed * dt) / 0.42;
+    for (const w of c.wheels) w.rotation.x += spin;
+  }
 
-    walk(dt, keys) {
-      let mx = 0;
-      let mz = 0;
-      if (keys.has('KeyW')) mz += 1;
-      if (keys.has('KeyS')) mz -= 1;
-      if (keys.has('KeyA')) mx -= 1;
-      if (keys.has('KeyD')) mx += 1;
-      if (mx === 0 && mz === 0) return;
-      // Camera-relative: W walks away from the camera (the heading way).
-      const h = G.player.heading;
-      const fx = Math.sin(h);
-      const fz = Math.cos(h);
-      const rx = Math.cos(h);
-      const rz = -Math.sin(h);
-      let dx = fx * mz + rx * mx;
-      let dz = fz * mz + rz * mx;
-      const len = Math.hypot(dx, dz) || 1;
-      dx /= len;
-      dz /= len;
-      const speed = keys.has('ShiftLeft') || keys.has('ShiftRight') ? SPRINT_SPEED : WALK_SPEED;
-      G.player.x += dx * speed * dt;
-      G.player.z += dz * speed * dt;
-      G.player.heading = Math.atan2(dx, dz);
-      this.clampToWorld();
-    },
+  _hitsBuilding(x, z, r) {
+    for (const b of this.boxes) {
+      if (x + r > b.minX && x - r < b.maxX && z + r > b.minZ && z - r < b.maxZ) return true;
+    }
+    return false;
+  }
 
-    drive(dt, keys) {
-      const car = G.player.car;
-      if (!car) return;
-      const auto = G.autoDrive;
-      const fwd = auto || keys.has('KeyW') || keys.has('ArrowUp');
-      const back = keys.has('KeyS') || keys.has('ArrowDown');
-      const hand = keys.has('Space');
-      if (fwd) car.speed += CAR_ACCEL * dt;
-      if (back) car.speed -= (car.speed > 0.5 ? CAR_BRAKE : CAR_ACCEL * 0.7) * dt;
-      if (!fwd && !back) {
-        // Coast down gently.
-        car.speed -= Math.sign(car.speed) * 6 * dt;
-        if (Math.abs(car.speed) < 0.2) car.speed = 0;
-      }
-      if (hand) car.speed *= Math.max(0, 1 - 3.2 * dt);
-      // Rico's ram boost: a temporary higher top speed.
-      const top = G.crew.rico.boostT > 0 ? CAR_MAX_SPEED + 10 : CAR_MAX_SPEED;
-      car.speed = Math.max(-CAR_REVERSE_MAX, Math.min(top, car.speed));
-      // Steering scales with speed (no turning while parked).
-      let steer = 0;
-      if (keys.has('KeyA') || keys.has('ArrowLeft')) steer += 1;
-      if (keys.has('KeyD') || keys.has('ArrowRight')) steer -= 1;
-      if (auto) steer = G.autoSteer || 0;
-      const spd = Math.abs(car.speed);
-      if (spd > 0.2 && steer !== 0) {
-        car.heading += steer * STEER_RATE * dt * Math.min(1, spd / 8) * Math.sign(car.speed);
-      }
-      car.x += Math.sin(car.heading) * car.speed * dt;
-      car.z += Math.cos(car.heading) * car.speed * dt;
-      // Keep the car on the island (city + beach, not the open ocean).
-      car.x = Math.max(-268, Math.min(268, car.x));
-      car.z = Math.max(-268, Math.min(304, car.z));
-      G.player.x = car.x;
-      G.player.z = car.z;
-      G.player.heading = car.heading;
-      car.sync();
-      car.spin(dt);
-      G.audio.setEngine(car.speed, true);
-      // Collisions with traffic are soft: a thud and a speed cut.
-      for (const other of G.trafficCars) {
-        if (other === car || other.staged) continue;
-        const d = Math.hypot(other.x - car.x, other.z - car.z);
-        if (d < 3.4 && Math.abs(car.speed) > 3) {
-          G.audio.thud(Math.abs(car.speed));
-          car.speed *= 0.55;
-          other.speed = Math.max(other.speed, 4);
-        }
-      }
-    },
+  gear() {
+    const s = Math.abs(this.speed);
+    if (s < 0.5) return 'N';
+    if (this.speed < 0) return 'R';
+    if (s < 8) return 'G1';
+    if (s < 16) return 'G2';
+    if (s < 26) return 'G3';
+    return 'G4';
+  }
 
-    clampToWorld() {
-      // On foot Dante stays on the island too (city + beach, z <= 308).
-      G.player.x = Math.max(-268, Math.min(268, G.player.x));
-      G.player.z = Math.max(-268, Math.min(306, G.player.z));
-    },
-  };
+  respawn() {
+    this.health = 100;
+    if (this.inCar) {
+      // Leave the car where it is; Dante steps out at the safehouse.
+      if (this.car) this.car.speed = 0;
+      this.car = null;
+      this.inCar = false;
+      this.mesh.visible = true;
+    }
+    this.x = SAFEHOUSE.x; this.z = SAFEHOUSE.z;
+    this.heading = 0;
+    this.speed = 0;
+    this.mesh.position.set(this.x, 0.06, this.z);
+    this.mesh.rotation.y = 0;
+  }
+}
 
-  return player;
+// --- chase camera -------------------------------------------------------------
+export function updateChaseCamera(camera, player, dt) {
+  const p = player.pos();
+  let heading, speed;
+  if (player.inCar && player.car) {
+    heading = player.car.heading;
+    speed = Math.abs(player.speed);
+  } else {
+    heading = player.heading;
+    speed = player.walkSpeed;
+  }
+  const d = headingToDir(heading);
+  const rx = Math.cos(heading), rz = -Math.sin(heading); // right vector
+  const lat = ENGINE.chaseLateral;
+  const distBack = ENGINE.chaseDist + speed * 0.03;
+  const tx = p.x - d.x * distBack + rx * lat;
+  const tz = p.z - d.z * distBack + rz * lat;
+  const ty = 2.4 + speed * 0.008;
+  // Smooth follow (lerp, frame-rate independent-ish).
+  const k = 1 - Math.pow(0.001, dt);
+  camera.position.x += (tx - camera.position.x) * k;
+  camera.position.y += (ty - camera.position.y) * k;
+  camera.position.z += (tz - camera.position.z) * k;
+  camera.lookAt(p.x + d.x * 8, 1.2, p.z + d.z * 8);
 }
